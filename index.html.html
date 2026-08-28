@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Rota PEV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F6F4EC; --surface:#FFFFFF; --border:#DED8C4; --border-strong:#C7BFA3;
+  --ink:#182B20; --ink-soft:#586254; --ink-faint:#8A9182;
+  --green:#2F6B4F; --green-dark:#1F4C37; --green-light:#E4EFE6;
+  --amber:#B8641E; --amber-light:#F8E9D6;
+  --red:#B23A2E; --red-light:#F7E4E1;
+  --blue:#2A5C8A;
+  --radius:12px;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);-webkit-tap-highlight-color:transparent;}
+body{padding-bottom:84px;}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;margin:0;}
+button{font-family:var(--font-body);cursor:pointer;}
+.hidden{display:none !important;}
+
+.topbar{position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid var(--border);padding:14px 16px 10px;}
+.topbar-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.brand{display:flex;align-items:baseline;gap:8px;}
+.brand h1{font-size:20px;letter-spacing:-0.01em;}
+.brand .count{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;}
+.stat .n{font-family:var(--font-display);font-size:20px;font-weight:700;line-height:1.1;}
+.stat .l{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;}
+.stat.pending .n{color:var(--amber);}
+.stat.done .n{color:var(--green);}
+
+.tabs{display:flex;gap:6px;margin-top:12px;}
+.tab-btn{flex:1;padding:9px 0;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);font-size:14px;font-weight:500;color:var(--ink-soft);}
+.tab-btn.active{background:var(--green);border-color:var(--green);color:#fff;}
+
+.recalc-row{display:flex;gap:8px;margin-top:10px;}
+.btn{border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--surface);padding:10px 14px;font-size:13px;font-weight:500;color:var(--ink);display:flex;align-items:center;gap:6px;justify-content:center;}
+.btn:active{transform:scale(.98);}
+.btn.primary{background:var(--green);border-color:var(--green);color:#fff;}
+.btn.ghost{background:transparent;}
+.btn.small{padding:7px 10px;font-size:12px;}
+.btn.full{width:100%;}
+.btn.danger{color:var(--red);border-color:var(--red-light);}
+
+.banner{margin:10px 16px 0;padding:10px 12px;border-radius:var(--radius);font-size:13px;line-height:1.5;}
+.banner.warn{background:var(--amber-light);color:#5c380f;border:1px solid #EAC492;}
+.banner.info{background:var(--green-light);color:var(--green-dark);border:1px solid #BFDCC9;}
+
+#geocode-overlay{position:fixed;inset:0;background:rgba(246,244,236,.97);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;}
+#geocode-overlay h2{font-size:17px;margin-bottom:8px;}
+#geocode-overlay p{font-size:13px;color:var(--ink-soft);max-width:280px;margin:0 auto 18px;}
+.progress-track{width:220px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--green);width:0%;transition:width .2s;}
+.progress-label{margin-top:10px;font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+
+.view{padding:14px 16px;}
+.list{display:flex;flex-direction:column;gap:10px;}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;display:flex;gap:12px;}
+.card.done{opacity:.55;}
+.order-badge{font-family:var(--font-display);font-weight:700;font-size:18px;color:var(--green-dark);min-width:30px;padding-top:1px;}
+.card.done .order-badge{color:var(--ink-faint);}
+.card-body{flex:1;min-width:0;}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.container-id{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+.dist-tag{font-family:var(--font-mono);font-size:11px;color:var(--blue);white-space:nowrap;}
+.addr{font-size:14px;line-height:1.4;margin:4px 0 6px;}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--green-light);color:var(--green-dark);font-weight:500;}
+.badge.freq{background:var(--amber-light);color:#6b3f0f;}
+.card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.check-row{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;}
+.check-row input{width:18px;height:18px;accent-color:var(--green);}
+.thumb{width:34px;height:34px;border-radius:6px;object-fit:cover;border:1px solid var(--border);}
+.nav-link{font-size:12px;font-weight:500;padding:7px 10px;border-radius:var(--radius);border:1px solid var(--border-strong);text-decoration:none;color:var(--ink);}
+.nav-link.gmaps{background:var(--blue);border-color:var(--blue);color:#fff;}
+.nav-link.waze{background:#33ccff;border-color:#33ccff;color:#0a2a3d;}
+
+#map{width:100%;height:60vh;border-radius:var(--radius);border:1px solid var(--border);}
+.leaflet-div-icon{background:transparent;border:none;}
+.pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:2px solid #fff;}
+.pin span{transform:rotate(45deg);font-family:var(--font-mono);font-size:10px;font-weight:700;color:#fff;}
+.pin.pending{background:var(--amber);}
+.pin.done{background:var(--green);}
+.pin.me{background:var(--blue);border-radius:50%;}
+
+.bottombar{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;z-index:40;}
+
+.modal-bg{position:fixed;inset:0;background:rgba(24,43,32,.5);z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;}
+.modal{background:var(--surface);border-radius:16px;padding:20px;max-width:320px;width:100%;}
+.modal h3{font-size:16px;margin-bottom:8px;}
+.modal p{font-size:13px;color:var(--ink-soft);line-height:1.5;margin:0 0 16px;}
+.modal-actions{display:flex;gap:8px;}
+.modal img{width:100%;border-radius:10px;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<div id="geocode-overlay">
+  <h2>Localizando os endereços</h2>
+  <p id="geo-status">Isso acontece só uma vez. Buscando coordenadas de cada PEV para montar o mapa e calcular a rota.</p>
+  <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
+  <div class="progress-label" id="geo-count">0 / 0</div>
+  <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
+</div>
+
+<div id="route-overlay" class="hidden" style="position:fixed;inset:0;background:rgba(246,244,236,.97);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;">
+  <h2 style="font-size:17px;margin-bottom:8px;">Calculando a melhor rota</h2>
+  <p style="font-size:13px;color:var(--ink-soft);max-width:280px;margin:0 auto 18px;">Consultando tempo real de trânsito nas ruas entre os pontos pendentes.</p>
+  <div class="progress-track"><div class="progress-fill" id="route-progress"></div></div>
+  <div class="progress-label" id="route-count">0 / 0</div>
+  <button class="btn small" style="margin-top:18px;" id="skip-route">Usar distância em linha reta</button>
+</div>
+
+<div class="topbar">
+  <div class="topbar-row">
+    <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span></div>
+    <button class="btn small ghost" id="reset-btn"><i class="ti"></i>Reiniciar mês</button>
+  </div>
+  <div class="stats">
+    <div class="stat pending"><div class="n" id="stat-pending">0</div><div class="l">pendentes</div></div>
+    <div class="stat done"><div class="n" id="stat-done">0</div><div class="l">visitados</div></div>
+    <div class="stat"><div class="n" id="stat-time">0</div><div class="l" id="stat-time-label">min de rota</div></div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="list">Lista</button>
+    <button class="tab-btn" data-tab="map">Mapa</button>
+  </div>
+  <div class="recalc-row">
+    <button class="btn primary full" id="recalc-btn">Recalcular rota a partir daqui</button>
+  </div>
+  <div id="banner-slot"></div>
+</div>
+
+<div class="view" id="view-list">
+  <div class="list" id="list-container"></div>
+</div>
+
+<div class="view hidden" id="view-map">
+  <div id="map"></div>
+</div>
+
+<div class="bottombar">
+  <button class="btn full" id="export-xlsx-btn">Exportar planilha</button>
+  <button class="btn full" id="export-photos-btn">Baixar fotos</button>
+</div>
+
+<input type="file" accept="image/*" capture="environment" id="photo-input" class="hidden">
+<div id="modal-slot"></div>
+
+<script>
+const PEVS = [{"id": "10018776", "endereco": "Rua Laranjal do Jari, 23, Pirituba - 05172-185 - São Paulo - SP", "setor": "PJ09", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110021002", "endereco": "Rua Talófitos, 53, jardim cidade pirituba - 02945-170 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018743", "endereco": "Rua Jonas Eudoque, 78, Jardim Santo Elias - 05136-250 - São Paulo - SP", "setor": "PJ07", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018803", "endereco": "Rua Doutor Nelson Ferreira de Souza, 90, Pinheiros  - 05467-090 - São Paulo - SP", "setor": "Pi24", "frequencia": "Terça Noturno", "obs": ""}, {"id": "110020643", "endereco": "Rua Laranjal Do Jari, 120, Pirituba - 05172-185 - São Paulo - SP", "setor": "PJ09", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018541", "endereco": "Avenida Benedito de Andrade , 189, Pirituba -  02936-000 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018328", "endereco": "Rua Telmo Coelho Filho, 200, Jardim Olympia - 05543-020 - São Paulo - SP", "setor": "BT25", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018778", "endereco": "Avenida Cabo Adão Pereira, 254, Jardim São José - 02970-000 - São Paulo - SP", "setor": "Pj06", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018314", "endereco": "Rua Sáverio Quadrio, 261, Butantã - 05571-190 - São Paulo - SP", "setor": "BT14", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018315", "endereco": "Rua Sáverio Quadrio, 261, Butantã - 05571-190 - São Paulo - SP", "setor": "BT14", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018281", "endereco": "Rua República dos palmares, 271, jardim cidade pirituba - 02945-160 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020365", "endereco": "Rua Julieta espirito Santo Pinheiro, 300, Vila Albano - 05542-120 - São Paulo - SP", "setor": "BT19", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019331", "endereco": "Avenida Gonçalo Madeira, 300, Jaguaré - 05348-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018702", "endereco": "Rua Corcovado, 217, LAPA - 05038-100 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110020900", "endereco": "Rua Lino Pinto dos Santos, 400, Jardim da Felicidade - 05143-000 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018734", "endereco": "Avenida Cardeal Motta, 468, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018324", "endereco": "Av. Doutor Candido Motta Filho, 557,  - 05351-000 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018735", "endereco": "Avenida Cardeal Motta, 773, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10021580", "endereco": "Rua Olavo Freire, 796, ´Sumaré - 01251-110 - São Paulo - SP", "setor": "LA12", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018741", "endereco": "Rua Clementine Brenne, 896, Jardim Colombo - 05659-000 - São Paulo - SP", "setor": "BT11", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110019335", "endereco": "Avenida Presidente Altino, 1458, Jaguaré - 04116-145 - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018543", "endereco": "Rua Andressa, 500, Jaragua - 02995-140 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018297", "endereco": "Avenida Raimundo Pereira de Magalhaes, 3560, Jardim Iris - 05145-200 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018752", "endereco": "Parque Previdência, S/N, Instituto de Previdência - 05532-030 - São Paulo - SP", "setor": "BT12", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018321", "endereco": "Rua Alfredo Xavier de Andrade, 111, Butantã - 05596-030 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018312", "endereco": "Avenida Vital Brasil, 1111, Butantã - 05503-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018295", "endereco": "Rua Padre Antônio Link, 113, Jardim Ferreira - 05521-160 - São Paulo - SP", "setor": "BT17", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110018737", "endereco": "Rua Aiuca, 118 (Parque Pan Americano), Jardim Vivan - 02993-030 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10019381", "endereco": "Rua Luis Elias Attie, 147, São Domingos - 05127-020 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019383", "endereco": "Avenida Cavaleiros de São Paulo, 155, City América - 05101-240 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019327", "endereco": "Avenida Marquês de São Vicente, 1579,  Várzea da Barra Funda - 01139-003 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110020088", "endereco": "Avenida Valdemar Ferreira, 16, Butantã - 05501-000 - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018296", "endereco": "Avenida do Rio Pequeno, 1660, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018730", "endereco": "Rua Antônio Fernandes Pinheiros, 172, Jardim Cidade Pirituba - 02941-000 - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018307", "endereco": "Avenida do Rio Pequeno, 1735, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019003", "endereco": "Avenida Tomas Edson, 174, Barra Funda - 01140-000 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018310", "endereco": "Avenida Corifeu de Azevedo Marques, 1903, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018329", "endereco": "Rua Vicente Pelosi, 2, Vila Gomes - 05588-010 - São Paulo - SP", "setor": "BT15", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018736", "endereco": "Rua Manoel Ribeiro Rosa, 2, Jardim Cidade Pirituba - 02940-000 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018729", "endereco": "Avenida Paula Ferreira, 2043, Vila Pirituba - 02915-100 - São Paulo - SP", "setor": "PJ01", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018309", "endereco": "Avenida Corifeu de Azevedo Marques, 2076, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018322", "endereco": "Rua Dr Manuel de Paiva Ramos, 211, Rio Pequeno - 05351-015 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018294", "endereco": "Avenida Professor Francisco Morato, 2116, Butantã - 05512-200 - São Paulo - SP", "setor": "BT05", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018300", "endereco": "Rua Santanesia, 218, Butantã - 05580-050 - São Paulo - SP", "setor": "BT04", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018299", "endereco": "Avenida Corifeu de Azevedo Marques, 22, Butantã - 05582-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110021000", "endereco": "Avenida Marechal Mario Guedes, 221, Jaguaré - 05348-010 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018308", "endereco": "Avenida Corifeu de Azevedo Marques, 2258, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018320", "endereco": "Avenida Comendador Alberto Bonfigliori, 226, Jardim Bonfiglioli - 05593-000 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018298", "endereco": "Rua Aiuca, 23 (Parque Pan Americano), Jardim Vivan - 02993-030 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018732", "endereco": "Avenida do Anastácio, 241, City America - 05119-000 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020656", "endereco": "Rua Icádio, 250, Chácara Jaraguá - 05101-250 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019380", "endereco": "Rua Ademar Martins de Freitas, 257, Jardim Santo Elias - 05135-300 - São Paulo - SP", "setor": "PJ07", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019374", "endereco": "Rua Antônio Galvão Medeiros, 29, Jardim Vivan - 02992-100 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020087", "endereco": "Avenida General Mac Artur, 30, Vila Lageado - 05338-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018330", "endereco": "Rua José Franco Silva, 321, Cidade São Francisco - 05356-010 - São Paulo - SP", "setor": "BT27", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018738", "endereco": "Rua Aquibi, 33 (Parque Pan Americano), Jardim Vivan - 02993-010 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018319", "endereco": "Avenida Comendador Alberto Bonfigliori, 459, Jardim Bonfiglioli - 05593-000 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110019358", "endereco": "Avenida Ermano Marchetti, 481, Agua Branca - 05038-100 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018293", "endereco": "Rua Padre Guido Del Toro, 520, Chácara Inglesa - 05142-120 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018311", "endereco": "Avenida Corifeu de Azevedo Marques, 544, Butantã - 03601-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019326", "endereco": "Avenida Marquês de São Vicente, 553,  Várzea da Barra Funda - 01139-003 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018306", "endereco": "Avenida do Rio Pequeno, 557, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019359", "endereco": "Avenida Ermano Marchetti, 569, Agua Branca - 05038-000 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110019336", "endereco": "Praça General Porto Carreiro, 57, Jaguaré - 05331-040 - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018318", "endereco": "Avenida Comendador Alberto Bonfigliori, 573, Jardim Bonfiglioli - 05593-001 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110020638", "endereco": "Rua Willis Roberto Banks, 658, Parque Maria Domitila - 05128-000 - São Paulo - SP", "setor": "PJ11", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018326", "endereco": "Avenida Candido Mota Filho, 700, Cidade São Francisco - 05351-000 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018317", "endereco": "Praça Isai Leirner, 78, Jardim Bonfiglioli - 05592-140 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018316", "endereco": "Praça Isai Leirner, 78, Jardim Bonfiglioli - 05592-140 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018733", "endereco": "Avenida Cardeal Motta, 800, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018301", "endereco": "Avenida Professor Francisco Morato, 808, Butantã - 05512-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018327", "endereco": "Rua Dr José Benedito Viana de Moraes, 90, Rio Pequeno - 05351-005 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018726", "endereco": "Estrada São Paulo Jundiaí, 901, Perus - 05230-000 - São Paulo - SP", "setor": "Pj02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019141", "endereco": "Avenida Vital Brasil, 907, Butantã - 05503-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018739", "endereco": "Avenida Darcy Reis, 951, Parque Dos Principes - 05396-450 - São Paulo - SP", "setor": "BT13", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018742", "endereco": "Avenida Darcy Reis, 951, Parque Dos Principes - 05396-450 - São Paulo - SP", "setor": "BT13", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018575", "endereco": "Praça Cap Matheus de Andrade, S/N, Vila Madalena -  05449-120 - São Paulo - SP", "setor": "PI11", "frequencia": "Segunda Diurno", "obs": ""}, {"id": "110019382", "endereco": "Praça José Alves Pereira, S/N, Cidade D'Abril - 05182-270 - São Paulo - SP", "setor": "PJ03", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10021575", "endereco": "Av. Raimundo Pereira de Magalhães, 2239, Pirituba - 05145-000 - São Paulo - SP", "setor": "PJ02", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021567", "endereco": "Avenida Gonçalo Madeira, , 600, Lapa - 05348-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021821", "endereco": "Rua Manequinho, 146, Lapa - 05065-130 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021822", "endereco": "Rua Orlando Malagoli, 43, Butantã - 05361-020 - São Paulo - SP", "setor": "BT15", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "EB01", "endereco": "R. Engenheiro Oscar Americano - 502 -JARDIM GUEDALA - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta", "obs": ""}, {"id": "EB02", "endereco": "R. Engenheiro Oscar Americano - 502 -JARDIM GUEDALA - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta", "obs": ""}, {"id": "EB24", "endereco": "R. Antonio Fernandes Pinheiro (parque rodrigo de Gasperi) - 217 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB25", "endereco": "R. Antonio Fernandes Pinheiro (parque rodrigo de Gasperi) - 217 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB26", "endereco": "Av. Cardeal Motta - 84 - CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB27", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB28", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB29", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB30", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB31", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB32", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB33", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB34", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB35", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB68", "endereco": "Rua Coronel José Venâncio Dias - 840 -PIRITUBA/JARAGUA - São Paulo - SP", "setor": "PJ09", "frequencia": "Sábado", "obs": ""}, {"id": "EB80", "endereco": "Praça Sebastião Jayme Pinto - S/N -LAPA  - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado", "obs": ""}, {"id": "EB117", "endereco": "Rua Dona Elisa de Moraes Mendes - 613 -PINHEIROS  - São Paulo - SP", "setor": "PI13", "frequencia": "Sexta", "obs": ""}, {"id": "EB123", "endereco": "Praça da ADEP - S/N -Jd Cidade Pirituba - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB124", "endereco": "Rua Manuel Álvares Passos (parque rodrigo de Gasperi) - 46 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB125", "endereco": "Praça da ADEP - S/N -Jd Cidade Pirituba - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB131 ", "endereco": "Praça Waldir Azevedo - 248 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB132", "endereco": "Praça Waldir Azevedo - 369 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB133", "endereco": "Praça Waldir Azevedo - 331 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB144", "endereco": "Rua Doutor José Benedito Viana De Morais - 265 -BUTANTÃ - São Paulo - SP", "setor": "BT27", "frequencia": "Terça", "obs": ""}, {"id": "EB145", "endereco": "Rua Doutor Helio Fidelis - 152 -BUTANTÃ - São Paulo - SP", "setor": "BT27", "frequencia": "Terça", "obs": ""}, {"id": "EB146", "endereco": "Rua Alfredo Xavier de Andrade - 94 -BUTANTÃ - São Paulo - SP", "setor": "BT09", "frequencia": "Sábado", "obs": ""}, {"id": "EB147", "endereco": "Rua Augusto Farina - 220 -BUTANTÃ - São Paulo - SP", "setor": "BT09", "frequencia": "Sábado", "obs": ""}, {"id": "EB150", "endereco": "Praça Elis Regina  - S/N -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB153", "endereco": "Avenida Benjamin Mansur  - 200 -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB151", "endereco": "Praça Elis Regina  - S/N -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB152", "endereco": "Avenida Benjamin Mansur  - 236 -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB160 ", "endereco": "Praça Matauna  - S/N -LAPA  - São Paulo - SP", "setor": "LA18", "frequencia": "Quinta", "obs": ""}, {"id": "EB161", "endereco": "Praça Matauna  - S/N -LAPA  - São Paulo - SP", "setor": "LA18", "frequencia": "Quinta", "obs": ""}, {"id": "EB168", "endereco": "Avenida São Gualter - 900 -PINHEIROS  - São Paulo - SP", "setor": "PI24", "frequencia": "Segunda", "obs": ""}, {"id": "EB169", "endereco": "Praça Comendador Manuel de Melo Pimenta - 149 -PINHEIROS  - São Paulo - SP", "setor": "PI12", "frequencia": "Sexta", "obs": ""}, {"id": "EB170", "endereco": "Rua Cardeal Cagliori - 652 -PINHEIROS  - São Paulo - SP", "setor": "PI24", "frequencia": "Segunda", "obs": ""}, {"id": "EB171", "endereco": "Praça Comendador Manuel de Melo Pimenta - 208 -PINHEIROS  - São Paulo - SP", "setor": "PI12", "frequencia": "Sexta", "obs": ""}, {"id": "EB174", "endereco": "Praça José Alves Pereira - S/N -PIRITUBA - São Paulo - SP", "setor": "PJ03", "frequencia": "Sexta", "obs": ""}, {"id": "EB116", "endereco": "Rua Lino Pinto dos Santos - 400 -jardim Felicidade - São Paulo - SP", "setor": "PJ02", "frequencia": "Quarta", "obs": ""}, {"id": "EB65", "endereco": "Rua Talófitos - 53 -Jardim Cidade Pirituba - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta", "obs": ""}, {"id": "EB110", "endereco": "Rua República dos palmares - 271 -Jardim Cidade Pirituba - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta", "obs": ""}, {"id": "EB60", "endereco": "Avenida Gonçalo Madeira,  - 300 -Jaguaré - São Paulo - SP", "setor": "LA20", "frequencia": "Terça", "obs": ""}, {"id": "EB180", "endereco": "Rua Laranjal do Jari - 120 -Pirituba - São Paulo - SP", "setor": "PJ09", "frequencia": "Sábado", "obs": ""}, {"id": "EB181", "endereco": "Avenida Gonçalo Madeira,  - 600 -LAPA  - São Paulo - SP", "setor": "LA20", "frequencia": "Terça", "obs": ""}, {"id": "EB164", "endereco": "Pr. Acibe Ballan Camasmie - S/N -PINHEIROS  - São Paulo - SP", "setor": "PI34", "frequencia": "Sábado", "obs": ""}];
+const STORAGE_VISITED_KEY = 'visited-status-v1';
+const STORAGE_GEOCODE_KEY = 'geocode-cache-v2';
+const NOMINATIM_DELAY_MS = 1100;
+
+let visited = {};
+let geocodeCache = {};
+let currentPos = null;
+let routeOrder = [];
+let geocodingAborted = false;
+let routeUsesRealTime = false;
+let routeCalcAborted = false;
+let activePhotoId = null;
+let leafletMap = null;
+let mapLayer = null;
+
+function haversine(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+async function loadVisited(){
+  try{
+    const r = await window.storage.get(STORAGE_VISITED_KEY, false);
+    visited = r ? JSON.parse(r.value) : {};
+  }catch(e){ visited = {}; }
+}
+async function saveVisited(){
+  try{ await window.storage.set(STORAGE_VISITED_KEY, JSON.stringify(visited), false); }catch(e){}
+}
+async function loadGeocodeCache(){
+  try{
+    const r = await window.storage.get(STORAGE_GEOCODE_KEY, true);
+    geocodeCache = r ? JSON.parse(r.value) : {};
+  }catch(e){ geocodeCache = {}; }
+}
+async function saveGeocodeCache(){
+  try{ await window.storage.set(STORAGE_GEOCODE_KEY, JSON.stringify(geocodeCache), true); }catch(e){}
+}
+
+async function geocodeAddress(addr){
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=' + encodeURIComponent(addr);
+  const res = await fetch(url, {headers:{'Accept':'application/json'}});
+  if(!res.ok) throw new Error('geocode failed');
+  const data = await res.json();
+  if(!data || !data.length) return null;
+  return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+}
+
+function showBanner(type, text){
+  document.getElementById('banner-slot').innerHTML =
+    '<div class="banner ' + type + '">' + text + '</div>';
+}
+
+async function runGeocoding(){
+  const overlay = document.getElementById('geocode-overlay');
+  const missing = PEVS.filter(p => !geocodeCache[p.id]);
+  if(missing.length === 0){ overlay.classList.add('hidden'); return; }
+  document.getElementById('geo-count').textContent = '0 / ' + missing.length;
+  let done = 0;
+  let firstFailed = false;
+  for(const p of missing){
+    if(geocodingAborted) break;
+    try{
+      const coords = await geocodeAddress(p.endereco);
+      if(coords) geocodeCache[p.id] = coords;
+    }catch(e){
+      if(done === 0){ firstFailed = true; break; }
+    }
+    done++;
+    document.getElementById('geo-progress').style.width = Math.round(done/missing.length*100) + '%';
+    document.getElementById('geo-count').textContent = done + ' / ' + missing.length;
+    if(done % 10 === 0) await saveGeocodeCache();
+    await new Promise(r => setTimeout(r, NOMINATIM_DELAY_MS));
+  }
+  await saveGeocodeCache();
+  if(firstFailed){
+    geocodingAborted = true;
+    showBanner('warn', 'Não consegui localizar os endereços automaticamente agora (sem conexão com o serviço de mapas). A lista abaixo funciona normalmente, mas sem otimização de rota nem mapa. Tente recarregar mais tarde.');
+  }
+  overlay.classList.add('hidden');
+}
+
+async function osrmRow(fromCoord, candidateCoords){
+  const coordStr = [fromCoord, ...candidateCoords].map(c => c[1]+','+c[0]).join(';');
+  const url = 'https://router.project-osrm.org/table/v1/driving/' + coordStr + '?sources=0&annotations=duration,distance';
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('osrm http error');
+  const data = await res.json();
+  if(data.code !== 'Ok') throw new Error('osrm bad response');
+  return {durations: data.durations[0].slice(1), distances: data.distances[0].slice(1)};
+}
+
+function gmapsUrl(p){
+  const c = geocodeCache[p.id];
+  const dest = c ? (c[0]+','+c[1]) : encodeURIComponent(p.endereco);
+  return 'https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving';
+}
+function wazeUrl(p){
+  const c = geocodeCache[p.id];
+  if(c) return 'https://waze.com/ul?ll=' + c[0] + ',' + c[1] + '&navigate=yes';
+  return 'https://waze.com/ul?q=' + encodeURIComponent(p.endereco) + '&navigate=yes';
+}
+
+function getPosition(){
+  return new Promise((resolve) => {
+    if(!navigator.geolocation){ resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve([pos.coords.latitude, pos.coords.longitude]),
+      err => resolve(null),
+      {enableHighAccuracy:true, timeout:8000}
+    );
+  });
+}
+
+function nearestNeighborHaversine(startCoord, remaining){
+  const order = [];
+  const pool = [...remaining];
+  let from = startCoord;
+  while(pool.length){
+    let bestIdx = 0, bestDist = Infinity;
+    for(let i=0;i<pool.length;i++){
+      const c = geocodeCache[pool[i].id];
+      const d = haversine(from[0], from[1], c[0], c[1]);
+      if(d < bestDist){ bestDist = d; bestIdx = i; }
+    }
+    const chosen = pool.splice(bestIdx,1)[0];
+    order.push({...chosen, distFromPrev:null, timeFromPrev: bestDist / 30 * 60});
+    from = geocodeCache[chosen.id];
+  }
+  return order;
+}
+
+async function computeRoute(useRealTime){
+  routeCalcAborted = false;
+  const pending = PEVS.filter(p => !visited[p.id] && geocodeCache[p.id]);
+  const noCoords = PEVS.filter(p => !visited[p.id] && !geocodeCache[p.id]).map(p => ({...p, distFromPrev:null, timeFromPrev:null}));
+
+  if(!currentPos || pending.length === 0 || geocodingAborted){
+    routeOrder = PEVS.filter(p => !visited[p.id]).map(p => ({...p, distFromPrev:null, timeFromPrev:null}));
+    routeUsesRealTime = false;
+    return;
+  }
+
+  if(!useRealTime){
+    routeOrder = [...nearestNeighborHaversine(currentPos, pending), ...noCoords];
+    routeUsesRealTime = false;
+    return;
+  }
+
+  const overlay = document.getElementById('route-overlay');
+  overlay.classList.remove('hidden');
+  document.getElementById('route-count').textContent = '0 / ' + pending.length;
+
+  const remaining = [...pending];
+  const order = [];
+  let from = currentPos;
+  let done = 0;
+  let fallbackUsed = false;
+
+  while(remaining.length){
+    if(routeCalcAborted) break;
+    let chosen, metricValue, isTime = true;
+    try{
+      const cands = remaining.map(p => geocodeCache[p.id]);
+      const {durations} = await osrmRow(from, cands);
+      let bestIdx = 0, bestVal = Infinity;
+      for(let i=0;i<durations.length;i++){
+        const v = (durations[i] === null || durations[i] === undefined) ? Infinity : durations[i];
+        if(v < bestVal){ bestVal = v; bestIdx = i; }
+      }
+      if(bestVal === Infinity) throw new Error('no valid duration');
+      chosen = remaining.splice(bestIdx,1)[0];
+      metricValue = bestVal / 60;
+    }catch(e){
+      fallbackUsed = true;
+      let bestIdx = 0, bestDist = Infinity;
+      for(let i=0;i<remaining.length;i++){
+        const c = geocodeCache[remaining[i].id];
+        const d = haversine(from[0], from[1], c[0], c[1]);
+        if(d < bestDist){ bestDist = d; bestIdx = i; }
+      }
+      chosen = remaining.splice(bestIdx,1)[0];
+      metricValue = bestDist / 30 * 60;
+    }
+    order.push({...chosen, distFromPrev:null, timeFromPrev: metricValue});
+    from = geocodeCache[chosen.id];
+    done++;
+    document.getElementById('route-progress').style.width = Math.round(done/pending.length*100) + '%';
+    document.getElementById('route-count').textContent = done + ' / ' + pending.length;
+    await new Promise(r => setTimeout(r, 60));
+  }
+
+  overlay.classList.add('hidden');
+  routeOrder = [...order, ...remaining.map(p=>({...p, distFromPrev:null, timeFromPrev:null})), ...noCoords];
+  routeUsesRealTime = !routeCalcAborted;
+  if(fallbackUsed && !routeCalcAborted){
+    showBanner('warn', 'Alguns trechos foram calculados por distância em linha reta porque o serviço de rotas não respondeu — a ordem pode não ser 100% precisa nesses pontos.');
+  }
+}
+
+function fmtMin(min){
+  if(min === null || min === undefined) return '';
+  if(min < 1) return '<1 min';
+  if(min < 60) return Math.round(min) + ' min';
+  const h = Math.floor(min/60), m = Math.round(min%60);
+  return h + 'h' + (m>0 ? (m+'min') : '');
+}
+
+function updateStats(){
+  const pendingCount = PEVS.filter(p => !visited[p.id]).length;
+  const doneCount = PEVS.length - pendingCount;
+  const totalMin = routeOrder.reduce((s,p) => s + (p.timeFromPrev||0), 0);
+  document.getElementById('stat-pending').textContent = pendingCount;
+  document.getElementById('stat-done').textContent = doneCount;
+  document.getElementById('stat-time').textContent = totalMin ? Math.round(totalMin) : '0';
+  document.getElementById('stat-time-label').textContent = routeUsesRealTime ? 'min de trânsito' : 'min estimados';
+}
+
+async function renderList(){
+  const container = document.getElementById('list-container');
+  container.innerHTML = '';
+  const visitedOnly = PEVS.filter(p => visited[p.id]);
+  const items = [...routeOrder, ...visitedOnly];
+  for(let i=0;i<items.length;i++){
+    const p = items[i];
+    const isDone = !!visited[p.id];
+    const card = document.createElement('div');
+    card.className = 'card' + (isDone ? ' done' : '');
+    const orderLabel = isDone ? '✓' : (routeOrder.findIndex(r=>r.id===p.id) + 1);
+    let photoHtml = '<button class="btn small" data-photo="'+p.id+'">Tirar foto</button>';
+    try{
+      const ph = await window.storage.get('photo:'+p.id, false);
+      if(ph){ photoHtml = '<img class="thumb" src="'+ph.value+'" data-viewphoto="'+p.id+'"><button class="btn small" data-photo="'+p.id+'">Refazer foto</button>'; }
+    }catch(e){}
+    card.innerHTML =
+      '<div class="order-badge">'+orderLabel+'</div>'+
+      '<div class="card-body">'+
+        '<div class="card-top"><span class="container-id">#'+p.id+'</span>'+
+        (p.timeFromPrev!==null && p.timeFromPrev!==undefined ? '<span class="dist-tag">+'+fmtMin(p.timeFromPrev)+'</span>' : '')+
+        '</div>'+
+        '<div class="addr">'+p.endereco+'</div>'+
+        '<div class="badges"><span class="badge">'+p.setor+'</span><span class="badge freq">'+p.frequencia+'</span></div>'+
+        '<div class="card-actions">'+
+          '<label class="check-row"><input type="checkbox" data-visit="'+p.id+'" '+(isDone?'checked':'')+'> Visitei</label>'+
+          photoHtml+
+          '<a class="nav-link gmaps" href="'+gmapsUrl(p)+'" target="_blank" rel="noopener">Maps</a>'+
+          '<a class="nav-link waze" href="'+wazeUrl(p)+'" target="_blank" rel="noopener">Waze</a>'+
+        '</div>'+
+      '</div>';
+    container.appendChild(card);
+  }
+  updateStats();
+}
+
+function renderMap(){
+  if(geocodingAborted) return;
+  if(!leafletMap){
+    leafletMap = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+    }).addTo(leafletMap);
+  }
+  if(mapLayer) leafletMap.removeLayer(mapLayer);
+  mapLayer = L.layerGroup().addTo(leafletMap);
+  const bounds = [];
+
+  if(currentPos){
+    const meIcon = L.divIcon({className:'', html:'<div class="pin me"></div>', iconSize:[22,22]});
+    L.marker(currentPos, {icon: meIcon}).addTo(mapLayer).bindPopup('Você está aqui');
+    bounds.push(currentPos);
+  }
+
+  PEVS.forEach(p => {
+    const c = geocodeCache[p.id];
+    if(!c) return;
+    const isDone = !!visited[p.id];
+    const idx = routeOrder.findIndex(r=>r.id===p.id);
+    const label = isDone ? '✓' : (idx>=0 ? (idx+1) : '');
+    const icon = L.divIcon({className:'', html:'<div class="pin '+(isDone?'done':'pending')+'"><span>'+label+'</span></div>', iconSize:[26,26]});
+    L.marker(c, {icon: icon}).addTo(mapLayer).bindPopup('#'+p.id+'<br>'+p.endereco);
+    bounds.push(c);
+  });
+
+  const routeCoords = routeOrder.filter(p => geocodeCache[p.id]).map(p => geocodeCache[p.id]);
+  if(currentPos && routeCoords.length){
+    L.polyline([currentPos, ...routeCoords], {color:'#2F6B4F', weight:3, opacity:.7, dashArray:'6 6'}).addTo(mapLayer);
+  }
+
+  if(bounds.length){
+    leafletMap.fitBounds(bounds, {padding:[24,24]});
+  }else{
+    leafletMap.setView([-23.55,-46.63], 12);
+  }
+  setTimeout(()=>leafletMap.invalidateSize(), 100);
+}
+
+async function refreshAll(useRealTime){
+  await computeRoute(!!useRealTime);
+  await renderList();
+  if(!document.getElementById('view-map').classList.contains('hidden')) renderMap();
+}
+
+document.addEventListener('click', async (e) => {
+  const tabBtn = e.target.closest('.tab-btn');
+  if(tabBtn){
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    tabBtn.classList.add('active');
+    const tab = tabBtn.dataset.tab;
+    document.getElementById('view-list').classList.toggle('hidden', tab!=='list');
+    document.getElementById('view-map').classList.toggle('hidden', tab!=='map');
+    if(tab==='map') renderMap();
+    return;
+  }
+  if(e.target.id === 'recalc-btn'){
+    e.target.textContent = 'Buscando localização...';
+    currentPos = await getPosition();
+    e.target.textContent = 'Recalcular rota a partir daqui';
+    if(!currentPos){ showBanner('warn', 'Não consegui acessar sua localização. Verifique a permissão de GPS no navegador.'); }
+    else{ document.getElementById('banner-slot').innerHTML=''; }
+    await refreshAll(true);
+    return;
+  }
+  if(e.target.id === 'skip-route'){
+    routeCalcAborted = true;
+    document.getElementById('route-overlay').classList.add('hidden');
+    return;
+  }
+  const photoBtn = e.target.closest('[data-photo]');
+  if(photoBtn){
+    activePhotoId = photoBtn.dataset.photo;
+    document.getElementById('photo-input').click();
+    return;
+  }
+  const viewPhoto = e.target.closest('[data-viewphoto]');
+  if(viewPhoto){
+    const id = viewPhoto.dataset.viewphoto;
+    const r = await window.storage.get('photo:'+id, false);
+    document.getElementById('modal-slot').innerHTML =
+      '<div class="modal-bg" id="photo-modal-bg"><div class="modal"><img src="'+r.value+'">'+
+      '<div class="modal-actions"><button class="btn full" id="close-photo-modal">Fechar</button></div></div></div>';
+    return;
+  }
+  if(e.target.id === 'close-photo-modal' || e.target.id === 'photo-modal-bg'){
+    document.getElementById('modal-slot').innerHTML = '';
+    return;
+  }
+  if(e.target.id === 'skip-geocode'){
+    geocodingAborted = true;
+    document.getElementById('geocode-overlay').classList.add('hidden');
+    return;
+  }
+  if(e.target.id === 'reset-btn'){
+    document.getElementById('modal-slot').innerHTML =
+      '<div class="modal-bg" id="reset-modal-bg"><div class="modal"><h3>Reiniciar mês</h3>'+
+      '<p>Isso vai desmarcar todos os pontos visitados e apagar as fotos salvas neste app. Use quando começar um novo mês de coleta. Não afeta a planilha já exportada.</p>'+
+      '<div class="modal-actions"><button class="btn full" id="cancel-reset">Cancelar</button><button class="btn full danger" id="confirm-reset">Reiniciar</button></div></div></div>';
+    return;
+  }
+  if(e.target.id === 'cancel-reset' || e.target.id === 'reset-modal-bg'){
+    document.getElementById('modal-slot').innerHTML = '';
+    return;
+  }
+  if(e.target.id === 'confirm-reset'){
+    for(const p of PEVS){
+      try{ await window.storage.delete('photo:'+p.id, false); }catch(err){}
+    }
+    visited = {};
+    await saveVisited();
+    document.getElementById('modal-slot').innerHTML = '';
+    await refreshAll();
+    return;
+  }
+  if(e.target.id === 'export-xlsx-btn'){
+    const rows = PEVS.map(p => ({
+      'N Container': p.id,
+      'Endereco': p.endereco,
+      'Setor': p.setor,
+      'Frequencia vidro': p.frequencia,
+      'Visitado': visited[p.id] ? 'Sim' : 'Nao',
+      'Data exportacao': new Date().toLocaleDateString('pt-BR')
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rota PEV');
+    XLSX.writeFile(wb, 'rota_pev_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    return;
+  }
+  if(e.target.id === 'export-photos-btn'){
+    const btn = e.target;
+    btn.textContent = 'Preparando...';
+    const zip = new JSZip();
+    let count = 0;
+    for(const p of PEVS){
+      try{
+        const r = await window.storage.get('photo:'+p.id, false);
+        if(r && r.value){
+          const base64 = r.value.split(',')[1];
+          zip.file(p.id + '.jpg', base64, {base64:true});
+          count++;
+        }
+      }catch(err){}
+    }
+    btn.textContent = 'Baixar fotos';
+    if(count === 0){ showBanner('warn', 'Ainda não há fotos salvas para exportar.'); return; }
+    const blob = await zip.generateAsync({type:'blob'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'fotos_pev_' + new Date().toISOString().slice(0,10) + '.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+});
+
+document.addEventListener('change', async (e) => {
+  if(e.target.matches('[data-visit]')){
+    const id = e.target.dataset.visit;
+    visited[id] = e.target.checked;
+    await saveVisited();
+    await refreshAll();
+    return;
+  }
+  if(e.target.id === 'photo-input' && e.target.files[0] && activePhotoId){
+    const file = e.target.files[0];
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      img.onload = async () => {
+        const maxW = 1280;
+        const scale = Math.min(1, maxW / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+        try{ await window.storage.set('photo:'+activePhotoId, dataUrl, false); }catch(err){}
+        e.target.value = '';
+        await refreshAll();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+async function init(){
+  document.getElementById('month-label').textContent = new Date().toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+  await loadVisited();
+  await loadGeocodeCache();
+  await runGeocoding();
+  currentPos = await getPosition();
+  if(!currentPos && !geocodingAborted){
+    showBanner('warn', 'Não consegui acessar sua localização automaticamente. Toque em "Recalcular rota" e permita o acesso ao GPS quando o navegador pedir.');
+  }
+  await refreshAll();
+}
+init();
+</script>
+</body>
+</html>
