@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Rota PEV</title>
+<title>Rota PEV - v2.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -11,7 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCtut6p4Ln0HcOstzfzUhZZdCZHflFav24"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCtut6p4Ln0HcOstzfzUhZZdCZHflFav24" async defer></script>
 <style>
 :root{
   --bg:#F6F4EC; --surface:#FFFFFF; --border:#DED8C4; --border-strong:#C7BFA3;
@@ -68,6 +68,7 @@ button{font-family:var(--font-body);cursor:pointer;}
 .progress-track{width:220px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
 .progress-fill{height:100%;background:var(--green);width:0%;transition:width .2s;}
 .progress-label{margin-top:10px;font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+.version-tag{margin-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);}
 
 .view{padding:14px 16px;}
 .list{display:flex;flex-direction:column;gap:10px;}
@@ -120,6 +121,7 @@ button{font-family:var(--font-body);cursor:pointer;}
   <p id="geo-status">Buscando coordenadas exatas no Google Maps para montar o mapa e calcular a rota...</p>
   <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
   <div class="progress-label" id="geo-count">0 / 0</div>
+  <div class="version-tag">Versão 2.1</div>
   <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
 </div>
 
@@ -229,6 +231,7 @@ function getActiveCoord(id){
 
 function geocodeAddressGoogleSDK(addr){
   return new Promise((resolve) => {
+    if(typeof google === 'undefined' || !google.maps){ resolve(null); return; }
     if(!googleGeocoder) googleGeocoder = new google.maps.Geocoder();
     googleGeocoder.geocode({ address: addr }, (results, status) => {
       if(status === 'OK' && results && results[0]){
