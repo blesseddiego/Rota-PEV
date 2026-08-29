@@ -121,7 +121,7 @@ button{font-family:var(--font-body);cursor:pointer;}
   <p id="geo-status">Buscando coordenadas exatas para montar o mapa e calcular a rota...</p>
   <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
   <div class="progress-label" id="geo-count">0 / 0</div>
-  <div class="version-tag">Versão 4.0</div>
+  <div class="version-tag">Versão 5.0</div>
   <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
 </div>
 
@@ -197,6 +197,7 @@ const STORAGE_MANUAL_KEY = 'manual-coords-v1';
 let visited = {};
 let geocodeCache = {};
 let manualCoords = {};
+let pinnedOrder = {};
 let currentPos = null;
 let routeOrder = [];
 let geocodingAborted = false;
@@ -234,6 +235,19 @@ function loadManualCoords(){
 function saveManualCoords(){
   try{ localStorage.setItem(STORAGE_MANUAL_KEY, JSON.stringify(manualCoords)); }catch(e){}
 }
+function loadPinnedOrder(){
+  try{ const r = localStorage.getItem('pinned-order-v1'); pinnedOrder = r ? JSON.parse(r) : {}; }catch(e){ pinnedOrder = {}; }
+}
+function savePinnedOrder(){
+  try{ localStorage.setItem('pinned-order-v1', JSON.stringify(pinnedOrder)); }catch(e){}
+}
+function loadFlags(){
+  try{ const r = localStorage.getItem('point-flags-v1'); flags = r ? JSON.parse(r) : {}; }catch(e){ flags = {}; }
+}
+function saveFlags(){
+  try{ localStorage.setItem('point-flags-v1', JSON.stringify(flags)); }catch(e){}
+}
+let flags = {};
 
 function getActiveCoord(id){
   return manualCoords[id] || geocodeCache[id] || null;
@@ -272,6 +286,25 @@ function parseAddressParts(raw){
   const numMatch = number.match(/\d+[A-Za-z]?/);
   number = (/S\/?N/i.test(number) || !numMatch) ? '' : numMatch[0];
   return { street, number, neighborhood, cep, city:'São Paulo', state:'SP' };
+}
+
+// Empresta o CEP de outro ponto da mesma rua quando o endereço não traz CEP
+function normalizeStreetName(s){
+  let n = normalizeHeader(s || '');
+  n = n.replace(/^(rua|av|avenida|r|praca|pr|estrada|alameda|al)\.?\s+/,'').trim();
+  return n;
+}
+let streetCepIndex = null;
+function buildStreetCepIndex(){
+  const idx = {};
+  PEVS.forEach(p => {
+    const parts = parseAddressParts(p.endereco);
+    if(parts.cep && parts.street){
+      const key = normalizeStreetName(parts.street);
+      if(key && !idx[key]) idx[key] = parts.cep;
+    }
+  });
+  return idx;
 }
 
 async function geoapifyStructuredSearch(parts){
@@ -314,6 +347,11 @@ async function geocodeAddressFreeText(addr){
 // Marca como "suspeito" (3o item do array) se o resultado cair fora da Grande SP.
 async function geocodeAddressGeoapify(addr){
   const parts = parseAddressParts(addr);
+  if(!parts.cep && parts.street){
+    if(!streetCepIndex) streetCepIndex = buildStreetCepIndex();
+    const borrowed = streetCepIndex[normalizeStreetName(parts.street)];
+    if(borrowed) parts.cep = borrowed;
+  }
   let coords = null;
   try{ coords = await geoapifyStructuredSearch(parts); }catch(e){}
   if(!coords){
@@ -392,22 +430,31 @@ function getPosition(){
   });
 }
 
-function nearestNeighborHaversine(startCoord, remaining){
-  const order = [];
-  const pool = [...remaining];
-  let from = startCoord;
-  while(pool.length){
-    let bestIdx = 0, bestDist = Infinity;
-    for(let i=0;i<pool.length;i++){
-      const c = getActiveCoord(pool[i].id);
-      const d = haversine(from[0], from[1], c[0], c[1]);
-      if(d < bestDist){ bestDist = d; bestIdx = i; }
-    }
-    const chosen = pool.splice(bestIdx,1)[0];
-    order.push({...chosen, distFromPrev:null, timeFromPrev: bestDist / 30 * 60});
-    from = getActiveCoord(chosen.id);
-  }
-  return order;
+function resolvePinnedSlots(pending){
+  const totalSlots = pending.length;
+  const byId = {};
+  pending.forEach(p => byId[p.id] = p);
+  const usedSlots = new Set();
+  const pinnedAssignments = [];
+  Object.keys(pinnedOrder).forEach(id => {
+    if(!byId[id]) return;
+    let slot = pinnedOrder[id];
+    if(slot < 1) slot = 1;
+    if(slot > totalSlots) slot = totalSlots;
+    pinnedAssignments.push({id, slot});
+  });
+  pinnedAssignments.sort((a,b) => a.slot - b.slot);
+  const finalSlotForId = {};
+  pinnedAssignments.forEach(pa => {
+    let s = pa.slot;
+    while(usedSlots.has(s) && s < totalSlots) s++;
+    usedSlots.add(s);
+    finalSlotForId[pa.id] = s;
+  });
+  const result = new Array(totalSlots).fill(null);
+  Object.keys(finalSlotForId).forEach(id => { result[finalSlotForId[id]-1] = byId[id]; });
+  const pool = pending.filter(p => !(p.id in finalSlotForId));
+  return {result, pool, totalSlots};
 }
 
 async function computeRoute(useRealTime){
@@ -421,57 +468,85 @@ async function computeRoute(useRealTime){
     return;
   }
 
+  const {result, pool, totalSlots} = resolvePinnedSlots(pending);
+  let from = currentPos;
+
   if(!useRealTime){
-    routeOrder = [...nearestNeighborHaversine(currentPos, pending), ...noCoords];
+    for(let slot=0; slot<totalSlots; slot++){
+      if(result[slot]){
+        const c = getActiveCoord(result[slot].id);
+        const d = haversine(from[0], from[1], c[0], c[1]);
+        result[slot] = {...result[slot], distFromPrev:null, timeFromPrev: d/30*60};
+        from = c;
+        continue;
+      }
+      let bestIdx=0, bestDist=Infinity;
+      for(let i=0;i<pool.length;i++){
+        const c = getActiveCoord(pool[i].id);
+        const d = haversine(from[0], from[1], c[0], c[1]);
+        if(d<bestDist){bestDist=d; bestIdx=i;}
+      }
+      const chosen = pool.splice(bestIdx,1)[0];
+      result[slot] = {...chosen, distFromPrev:null, timeFromPrev: bestDist/30*60};
+      from = getActiveCoord(chosen.id);
+    }
+    routeOrder = [...result.filter(Boolean), ...noCoords];
     routeUsesRealTime = false;
     return;
   }
 
   const overlay = document.getElementById('route-overlay');
   overlay.classList.remove('hidden');
-  document.getElementById('route-count').textContent = '0 / ' + pending.length;
-
-  const remaining = [...pending];
-  const order = [];
-  let from = currentPos;
+  document.getElementById('route-count').textContent = '0 / ' + totalSlots;
   let done = 0;
   let fallbackUsed = false;
 
-  while(remaining.length){
+  for(let slot=0; slot<totalSlots; slot++){
     if(routeCalcAborted) break;
+    if(result[slot]){
+      const c = getActiveCoord(result[slot].id);
+      const d = haversine(from[0], from[1], c[0], c[1]);
+      result[slot] = {...result[slot], distFromPrev:null, timeFromPrev: d/30*60};
+      from = c;
+      done++;
+      document.getElementById('route-progress').style.width = Math.round(done/totalSlots*100) + '%';
+      document.getElementById('route-count').textContent = done + ' / ' + totalSlots;
+      continue;
+    }
+    if(!pool.length) break;
     let chosen, metricValue;
     try{
-      const cands = remaining.map(p => getActiveCoord(p.id));
+      const cands = pool.map(p => getActiveCoord(p.id));
       const {durations} = await osrmRow(from, cands);
-      let bestIdx = 0, bestVal = Infinity;
+      let bestIdx=0, bestVal=Infinity;
       for(let i=0;i<durations.length;i++){
-        const v = (durations[i] === null || durations[i] === undefined) ? Infinity : durations[i];
-        if(v < bestVal){ bestVal = v; bestIdx = i; }
+        const v = (durations[i]===null||durations[i]===undefined) ? Infinity : durations[i];
+        if(v<bestVal){bestVal=v; bestIdx=i;}
       }
-      if(bestVal === Infinity) throw new Error('no valid duration');
-      chosen = remaining.splice(bestIdx,1)[0];
-      metricValue = bestVal / 60;
+      if(bestVal===Infinity) throw new Error('no valid duration');
+      chosen = pool.splice(bestIdx,1)[0];
+      metricValue = bestVal/60;
     }catch(e){
       fallbackUsed = true;
-      let bestIdx = 0, bestDist = Infinity;
-      for(let i=0;i<remaining.length;i++){
-        const c = getActiveCoord(remaining[i].id);
+      let bestIdx=0, bestDist=Infinity;
+      for(let i=0;i<pool.length;i++){
+        const c = getActiveCoord(pool[i].id);
         const d = haversine(from[0], from[1], c[0], c[1]);
-        if(d < bestDist){ bestDist = d; bestIdx = i; }
+        if(d<bestDist){bestDist=d; bestIdx=i;}
       }
-      chosen = remaining.splice(bestIdx,1)[0];
-      metricValue = bestDist / 30 * 60;
+      chosen = pool.splice(bestIdx,1)[0];
+      metricValue = bestDist/30*60;
     }
-    order.push({...chosen, distFromPrev:null, timeFromPrev: metricValue});
+    result[slot] = {...chosen, distFromPrev:null, timeFromPrev: metricValue};
     from = getActiveCoord(chosen.id);
     done++;
-    document.getElementById('route-progress').style.width = Math.round(done/pending.length*100) + '%';
-    document.getElementById('route-count').textContent = done + ' / ' + pending.length;
+    document.getElementById('route-progress').style.width = Math.round(done/totalSlots*100) + '%';
+    document.getElementById('route-count').textContent = done + ' / ' + totalSlots;
     await new Promise(r => setTimeout(r, 40));
   }
 
   overlay.classList.add('hidden');
-  routeOrder = [...order, ...remaining.map(p=>({...p, distFromPrev:null, timeFromPrev:null})), ...noCoords];
+  routeOrder = [...result.filter(Boolean), ...noCoords];
   routeUsesRealTime = !routeCalcAborted;
   if(fallbackUsed && !routeCalcAborted){
     showBanner('warn', 'Alguns trechos foram calculados por estimativa de distância.');
@@ -529,6 +604,8 @@ function renderList(){
         '</div>'+
         '<div class="card-actions">'+
           '<label class="check-row"><input type="checkbox" data-visit="'+p.id+'" '+(isDone?'checked':'')+'> Visitei</label>'+
+          '<label class="check-row"><input type="checkbox" data-flag="limpeza" data-flagid="'+p.id+'" '+((flags[p.id]&&flags[p.id].limpeza)?'checked':'')+'> Limpeza</label>'+
+          '<label class="check-row"><input type="checkbox" data-flag="adesivos" data-flagid="'+p.id+'" '+((flags[p.id]&&flags[p.id].adesivos)?'checked':'')+'> Adesivos</label>'+
           photoHtml+
           '<button class="btn small" data-editpin="'+p.id+'">Ajustar pino</button>'+
           '<a class="nav-link gmaps" href="'+gmapsUrl(p)+'" target="_blank" rel="noopener">Maps</a>'+
@@ -565,7 +642,7 @@ function renderMap(){
     const idx = routeOrder.findIndex(r=>r.id===p.id);
     const label = isDone ? '✓' : (idx>=0 ? (idx+1) : '');
     const icon = L.divIcon({className:'', html:'<div class="pin '+(isDone?'done':'pending')+'"><span>'+label+'</span></div>', iconSize:[26,26]});
-    L.marker(c, {icon: icon}).addTo(mapLayer).bindPopup('#'+p.id+'<br>'+p.endereco);
+    L.marker(c, {icon: icon}).addTo(mapLayer).on('click', () => openPinModal(p.id));
     bounds.push(c);
   });
 
@@ -592,17 +669,26 @@ function openPinModal(id){
   const p = PEVS.find(item => item.id === id);
   if(!p) return;
   const initialCoord = getActiveCoord(id) || currentPos || [-23.55, -46.63];
+  const currentSlot = routeOrder.findIndex(r=>r.id===id) + 1;
+  const isPinned = pinnedOrder.hasOwnProperty(id);
 
   document.getElementById('modal-slot').innerHTML =
     '<div class="modal-bg" id="edit-pin-modal-bg"><div class="modal">'+
-    '<h3>Ajustar local do pino</h3>'+
+    '<h3>Ajustar ponto</h3>'+
     '<p>#' + p.id + ' - ' + p.endereco + '</p>'+
     '<div id="edit-map-container"></div>'+
     '<div class="modal-actions">'+
       '<button class="btn primary full" id="save-pin-btn" data-id="'+id+'">Salvar posição do pino</button>'+
       '<button class="btn full" id="gps-pin-btn" data-id="'+id+'">Salvar este local pelo GPS</button>'+
-      '<button class="btn full danger" id="cancel-pin-btn">Cancelar</button>'+
-    '</div></div></div>';
+    '</div>'+
+    '<p style="margin-top:14px;margin-bottom:6px;font-size:13px;font-weight:500;">Posição na rota</p>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<input type="number" min="1" max="'+(routeOrder.length||1)+'" value="'+(currentSlot>0?currentSlot:1)+'" id="pin-slot-input" style="flex:1;border-radius:var(--radius);border:1px solid var(--border-strong);padding:10px;font-family:var(--font-mono);font-size:14px;">'+
+      '<button class="btn primary" id="move-slot-btn" data-id="'+id+'">Mover</button>'+
+    '</div>'+
+    (isPinned ? '<button class="btn small ghost full" id="unpin-slot-btn" data-id="'+id+'" style="margin-top:8px;">Remover posição fixa</button>' : '')+
+    '<button class="btn full danger" id="cancel-pin-btn" style="margin-top:14px;">Fechar</button>'+
+    '</div></div>';
 
   setTimeout(() => {
     editMap = L.map('edit-map-container').setView(initialCoord, 16);
@@ -717,6 +803,26 @@ document.addEventListener('click', async (e) => {
     document.getElementById('modal-slot').innerHTML = '';
     return;
   }
+  if(e.target.id === 'move-slot-btn'){
+    const id = e.target.dataset.id;
+    const input = document.getElementById('pin-slot-input');
+    const slot = parseInt(input.value, 10);
+    if(slot && slot >= 1){
+      pinnedOrder[id] = slot;
+      savePinnedOrder();
+    }
+    document.getElementById('modal-slot').innerHTML = '';
+    await refreshAll(routeUsesRealTime);
+    return;
+  }
+  if(e.target.id === 'unpin-slot-btn'){
+    const id = e.target.dataset.id;
+    delete pinnedOrder[id];
+    savePinnedOrder();
+    document.getElementById('modal-slot').innerHTML = '';
+    await refreshAll(routeUsesRealTime);
+    return;
+  }
   const viewPhoto = e.target.closest('[data-viewphoto]');
   if(viewPhoto){
     const id = viewPhoto.dataset.viewphoto;
@@ -757,14 +863,29 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if(e.target.id === 'export-xlsx-btn'){
-    const rows = PEVS.map(p => ({
-      'N Container': p.id,
-      'Endereco': p.endereco,
-      'Setor': p.setor,
-      'Frequencia vidro': p.frequencia,
-      'Visitado': visited[p.id] ? 'Sim' : 'Nao',
-      'Data exportacao': new Date().toLocaleDateString('pt-BR')
-    }));
+    const rows = PEVS.map(p => {
+      const f = flags[p.id] || {};
+      const needsCleaning = !!f.limpeza;
+      const needsStickers = !!f.adesivos;
+      let obs = 'PEV Ok';
+      if(needsCleaning || needsStickers){
+        const items = [];
+        if(needsCleaning) items.push('Precisa de limpeza');
+        if(needsStickers) items.push('Precisa de adesivos');
+        obs = items.join(' / ');
+      }
+      return {
+        'N Container': p.id,
+        'Endereco': p.endereco,
+        'Setor': p.setor,
+        'Frequencia vidro': p.frequencia,
+        'Visitado': visited[p.id] ? 'Sim' : 'Nao',
+        'Precisa de limpeza': needsCleaning ? 'Sim' : 'Nao',
+        'Precisa de adesivos': needsStickers ? 'Sim' : 'Nao',
+        'OBS': obs,
+        'Data exportacao': new Date().toLocaleDateString('pt-BR')
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Rota PEV');
@@ -799,6 +920,8 @@ document.addEventListener('click', async (e) => {
       visited,
       geocodeCache,
       manualCoords,
+      pinnedOrder,
+      flags,
       photos: {}
     };
     for(const p of PEVS){
@@ -852,6 +975,14 @@ document.addEventListener('change', async (e) => {
     await refreshAll();
     return;
   }
+  if(e.target.matches('[data-flag]')){
+    const id = e.target.dataset.flagid;
+    const flagName = e.target.dataset.flag;
+    if(!flags[id]) flags[id] = {};
+    flags[id][flagName] = e.target.checked;
+    saveFlags();
+    return;
+  }
   if(e.target.id === 'backup-input' && e.target.files[0]){
     const file = e.target.files[0];
     const reader = new FileReader();
@@ -861,6 +992,8 @@ document.addEventListener('change', async (e) => {
         if(data.visited) { visited = data.visited; saveVisited(); }
         if(data.geocodeCache) { geocodeCache = data.geocodeCache; saveGeocodeCache(); }
         if(data.manualCoords) { manualCoords = data.manualCoords; saveManualCoords(); }
+        if(data.pinnedOrder) { pinnedOrder = data.pinnedOrder; savePinnedOrder(); }
+        if(data.flags) { flags = data.flags; saveFlags(); }
         if(data.photos) {
           Object.keys(data.photos).forEach(k => localStorage.setItem('photo:'+k, data.photos[k]));
         }
@@ -901,6 +1034,8 @@ async function init(){
   loadVisited();
   loadGeocodeCache();
   loadManualCoords();
+  loadPinnedOrder();
+  loadFlags();
   await runGeocoding();
   currentPos = await getPosition();
   if(!currentPos && !geocodingAborted){
