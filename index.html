@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Rota PEV - v3.0</title>
+<title>Rota PEV - v4.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -94,7 +94,7 @@ button{font-family:var(--font-body);cursor:pointer;}
 .nav-link.gmaps{background:var(--blue);border-color:var(--blue);color:#fff;}
 .nav-link.waze{background:#33ccff;border-color:#33ccff;color:#0a2a3d;}
 
-#map{width:100%;height:60vh;border-radius:var(--radius);border:1px solid var(--border);}
+#map{width:100%;height:60vh;border-radius:var(--radius);border:1px solid var(--border);position:relative;z-index:0;}
 .leaflet-div-icon{background:transparent;border:none;}
 .pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:2px solid #fff;}
 .pin span{transform:rotate(45deg);font-family:var(--font-mono);font-size:10px;font-weight:700;color:#fff;}
@@ -105,7 +105,7 @@ button{font-family:var(--font-body);cursor:pointer;}
 .bottombar{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 16px;display:flex;flex-direction:column;gap:6px;z-index:40;}
 .bottombar-row{display:flex;gap:8px;}
 
-.modal-bg{position:fixed;inset:0;background:rgba(24,43,32,.5);z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;}
+.modal-bg{position:fixed;inset:0;background:rgba(24,43,32,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;}
 .modal{background:var(--surface);border-radius:16px;padding:20px;max-width:340px;width:100%;}
 .modal h3{font-size:16px;margin-bottom:8px;}
 .modal p{font-size:13px;color:var(--ink-soft);line-height:1.5;margin:0 0 16px;}
@@ -121,7 +121,7 @@ button{font-family:var(--font-body);cursor:pointer;}
   <p id="geo-status">Buscando coordenadas exatas para montar o mapa e calcular a rota...</p>
   <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
   <div class="progress-label" id="geo-count">0 / 0</div>
-  <div class="version-tag">Versão 5.0</div>
+  <div class="version-tag">Versão 6.0 · armazenamento local (IndexedDB)</div>
   <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
 </div>
 
@@ -136,7 +136,8 @@ button{font-family:var(--font-body);cursor:pointer;}
 <div class="topbar">
   <div class="topbar-row">
     <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span></div>
-    <div style="display:flex;gap:6px;">
+    <div style="display:flex;gap:6px;align-items:center;">
+      <span id="save-indicator" title="Dados salvos" style="font-size:14px;">🟢</span>
       <button class="btn small ghost" id="upload-btn">Nova planilha</button>
       <button class="btn small ghost" id="reset-btn">Reiniciar mês</button>
     </div>
@@ -173,6 +174,10 @@ button{font-family:var(--font-body);cursor:pointer;}
     <button class="btn full small ghost" id="export-backup-btn">Exportar Backup</button>
     <button class="btn full small ghost" id="import-backup-btn">Restaurar Backup</button>
   </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <span id="auto-backup-info" style="font-size:11px;color:var(--ink-faint);font-family:var(--font-mono);">Backups automáticos guardados: 0/3</span>
+    <button class="btn small ghost" id="view-auto-backups-btn" style="padding:4px 8px;font-size:11px;">Ver backups</button>
+  </div>
 </div>
 
 <input type="file" accept="image/*" capture="environment" id="photo-input" class="hidden">
@@ -184,11 +189,145 @@ button{font-family:var(--font-body);cursor:pointer;}
 // COLE A CHAVE DA GEOAPIFY ABAIXO:
 const GEOAPIFY_API_KEY = '047c71795a564d2796bc3968a2c40c56';
 
-const PEVS_DEFAULT = [{"id": "10018776", "endereco": "Rua Laranjal do Jari, 23, Pirituba - 05172-185 - São Paulo - SP", "setor": "PJ09", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110021002", "endereco": "Rua Talófitos, 53, jardim cidade pirituba - 02945-170 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018743", "endereco": "Rua Jonas Eudoque, 78, Jardim Santo Elias - 05136-250 - São Paulo - SP", "setor": "PJ07", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018803", "endereco": "Rua Doutor Nelson Ferreira de Souza, 90, Pinheiros  - 05467-090 - São Paulo - SP", "setor": "Pi24", "frequencia": "Terça Noturno", "obs": ""}, {"id": "110020643", "endereco": "Rua Laranjal Do Jari, 120, Pirituba - 05172-185 - São Paulo - SP", "setor": "PJ09", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018541", "endereco": "Avenida Benedito de Andrade , 189, Pirituba -  02936-000 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018328", "endereco": "Rua Telmo Coelho Filho, 200, Jardim Olympia - 05543-020 - São Paulo - SP", "setor": "BT25", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018778", "endereco": "Avenida Cabo Adão Pereira, 254, Jardim São José - 02970-000 - São Paulo - SP", "setor": "Pj06", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018314", "endereco": "Rua Sáverio Quadrio, 261, Butantã - 05571-190 - São Paulo - SP", "setor": "BT14", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018315", "endereco": "Rua Sáverio Quadrio, 261, Butantã - 05571-190 - São Paulo - SP", "setor": "BT14", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018281", "endereco": "Rua República dos palmares, 271, jardim cidade pirituba - 02945-160 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020365", "endereco": "Rua Julieta espirito Santo Pinheiro, 300, Vila Albano - 05542-120 - São Paulo - SP", "setor": "BT19", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019331", "endereco": "Avenida Gonçalo Madeira, 300, Jaguaré - 05348-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018702", "endereco": "Rua Corcovado, 217, LAPA - 05038-100 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110020900", "endereco": "Rua Lino Pinto dos Santos, 400, Jardim da Felicidade - 05143-000 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018734", "endereco": "Avenida Cardeal Motta, 468, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018324", "endereco": "Av. Doutor Candido Motta Filho, 557,  - 05351-000 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018735", "endereco": "Avenida Cardeal Motta, 773, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10021580", "endereco": "Rua Olavo Freire, 796, ´Sumaré - 01251-110 - São Paulo - SP", "setor": "LA12", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018741", "endereco": "Rua Clementine Brenne, 896, Jardim Colombo - 05659-000 - São Paulo - SP", "setor": "BT11", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110019335", "endereco": "Avenida Presidente Altino, 1458, Jaguaré - 04116-145 - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018543", "endereco": "Rua Andressa, 500, Jaragua - 02995-140 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018297", "endereco": "Avenida Raimundo Pereira de Magalhaes, 3560, Jardim Iris - 05145-200 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018752", "endereco": "Parque Previdência, S/N, Instituto de Previdência - 05532-030 - São Paulo - SP", "setor": "BT12", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018321", "endereco": "Rua Alfredo Xavier de Andrade, 111, Butantã - 05596-030 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018312", "endereco": "Avenida Vital Brasil, 1111, Butantã - 05503-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018295", "endereco": "Rua Padre Antônio Link, 113, Jardim Ferreira - 05521-160 - São Paulo - SP", "setor": "BT17", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110018737", "endereco": "Rua Aiuca, 118 (Parque Pan Americano), Jardim Vivan - 02993-030 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10019381", "endereco": "Rua Luis Elias Attie, 147, São Domingos - 05127-020 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019383", "endereco": "Avenida Cavaleiros de São Paulo, 155, City América - 05101-240 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019327", "endereco": "Avenida Marquês de São Vicente, 1579,  Várzea da Barra Funda - 01139-003 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110020088", "endereco": "Avenida Valdemar Ferreira, 16, Butantã - 05501-000 - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018296", "endereco": "Avenida do Rio Pequeno, 1660, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018730", "endereco": "Rua Antônio Fernandes Pinheiros, 172, Jardim Cidade Pirituba - 02941-000 - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018307", "endereco": "Avenida do Rio Pequeno, 1735, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019003", "endereco": "Avenida Tomas Edson, 174, Barra Funda - 01140-000 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018310", "endereco": "Avenida Corifeu de Azevedo Marques, 1903, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018329", "endereco": "Rua Vicente Pelosi, 2, Vila Gomes - 05588-010 - São Paulo - SP", "setor": "BT15", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018736", "endereco": "Rua Manoel Ribeiro Rosa, 2, Jardim Cidade Pirituba - 02940-000 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018729", "endereco": "Avenida Paula Ferreira, 2043, Vila Pirituba - 02915-100 - São Paulo - SP", "setor": "PJ01", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018309", "endereco": "Avenida Corifeu de Azevedo Marques, 2076, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018322", "endereco": "Rua Dr Manuel de Paiva Ramos, 211, Rio Pequeno - 05351-015 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018294", "endereco": "Avenida Professor Francisco Morato, 2116, Butantã - 05512-200 - São Paulo - SP", "setor": "BT05", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018300", "endereco": "Rua Santanesia, 218, Butantã - 05580-050 - São Paulo - SP", "setor": "BT04", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018299", "endereco": "Avenida Corifeu de Azevedo Marques, 22, Butantã - 05582-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110021000", "endereco": "Avenida Marechal Mario Guedes, 221, Jaguaré - 05348-010 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018308", "endereco": "Avenida Corifeu de Azevedo Marques, 2258, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018320", "endereco": "Avenida Comendador Alberto Bonfigliori, 226, Jardim Bonfiglioli - 05593-000 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018298", "endereco": "Rua Aiuca, 23 (Parque Pan Americano), Jardim Vivan - 02993-030 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018732", "endereco": "Avenida do Anastácio, 241, City America - 05119-000 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020656", "endereco": "Rua Icádio, 250, Chácara Jaraguá - 05101-250 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019380", "endereco": "Rua Ademar Martins de Freitas, 257, Jardim Santo Elias - 05135-300 - São Paulo - SP", "setor": "PJ07", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019374", "endereco": "Rua Antônio Galvão Medeiros, 29, Jardim Vivan - 02992-100 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020087", "endereco": "Avenida General Mac Artur, 30, Vila Lageado - 05338-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018330", "endereco": "Rua José Franco Silva, 321, Cidade São Francisco - 05356-010 - São Paulo - SP", "setor": "BT27", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018738", "endereco": "Rua Aquibi, 33 (Parque Pan Americano), Jardim Vivan - 02993-010 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018319", "endereco": "Avenida Comendador Alberto Bonfigliori, 459, Jardim Bonfiglioli - 05593-000 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110019358", "endereco": "Avenida Ermano Marchetti, 481, Agua Branca - 05038-100 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018293", "endereco": "Rua Padre Guido Del Toro, 520, Chácara Inglesa - 05142-120 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018311", "endereco": "Avenida Corifeu de Azevedo Marques, 544, Butantã - 03601-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019326", "endereco": "Avenida Marquês de São Vicente, 553,  Várzea da Barra Funda - 01139-003 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018306", "endereco": "Avenida do Rio Pequeno, 557, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019359", "endereco": "Avenida Ermano Marchetti, 569, Agua Branca - 05038-000 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110019336", "endereco": "Praça General Porto Carreiro, 57, Jaguaré - 05331-040 - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018318", "endereco": "Avenida Comendador Alberto Bonfigliori, 573, Jardim Bonfiglioli - 05593-001 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110020638", "endereco": "Rua Willis Roberto Banks, 658, Parque Maria Domitila - 05128-000 - São Paulo - SP", "setor": "PJ11", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018326", "endereco": "Avenida Candido Mota Filho, 700, Cidade São Francisco - 05351-000 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018317", "endereco": "Praça Isai Leirner, 78, Jardim Bonfiglioli - 05592-140 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018316", "endereco": "Praça Isai Leirner, 78, Jardim Bonfiglioli - 05592-140 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018733", "endereco": "Avenida Cardeal Motta, 800, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018301", "endereco": "Avenida Professor Francisco Morato, 808, Butantã - 05512-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018327", "endereco": "Rua Dr José Benedito Viana de Moraes, 90, Rio Pequeno - 05351-005 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018726", "endereco": "Estrada São Paulo Jundiaí, 901, Perus - 05230-000 - São Paulo - SP", "setor": "Pj02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019141", "endereco": "Avenida Vital Brasil, 907, Butantã - 05503-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018739", "endereco": "Avenida Darcy Reis, 951, Parque Dos Principes - 05396-450 - São Paulo - SP", "setor": "BT13", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018742", "endereco": "Avenida Darcy Reis, 951, Parque Dos Principes - 05396-450 - São Paulo - SP", "setor": "BT13", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018575", "endereco": "Praça Cap Matheus de Andrade, S/N, Vila Madalena -  05449-120 - São Paulo - SP", "setor": "PI11", "frequencia": "Segunda Diurno", "obs": ""}, {"id": "110019382", "endereco": "Praça José Alves Pereira, S/N, Cidade D'Abril - 05182-270 - São Paulo - SP", "setor": "PJ03", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10021575", "endereco": "Av. Raimundo Pereira de Magalhães, 2239, Pirituba - 05145-000 - São Paulo - SP", "setor": "PJ02", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021567", "endereco": "Avenida Gonçalo Madeira, , 600, Lapa - 05348-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021821", "endereco": "Rua Manequinho, 146, Lapa - 05065-130 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021822", "endereco": "Rua Orlando Malagoli, 43, Butantã - 05361-020 - São Paulo - SP", "setor": "BT15", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "EB01", "endereco": "R. Engenheiro Oscar Americano - 502 -JARDIM GUEDALA - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta", "obs": ""}, {"id": "EB02", "endereco": "R. Engenheiro Oscar Americano - 502 -JARDIM GUEDALA - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta", "obs": ""}, {"id": "EB24", "endereco": "R. Antonio Fernandes Pinheiro (parque rodrigo de Gasperi) - 217 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB25", "endereco": "R. Antonio Fernandes Pinheiro (parque rodrigo de Gasperi) - 217 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB26", "endereco": "Av. Cardeal Motta - 84 - CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB27", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB28", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB29", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB30", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB31", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB32", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB33", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB34", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB35", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB68", "endereco": "Rua Coronel José Venâncio Dias - 840 -PIRITUBA/JARAGUA - São Paulo - SP", "setor": "PJ09", "frequencia": "Sábado", "obs": ""}, {"id": "EB80", "endereco": "Praça Sebastião Jayme Pinto - S/N -LAPA  - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado", "obs": ""}, {"id": "EB117", "endereco": "Rua Dona Elisa de Moraes Mendes - 613 -PINHEIROS  - São Paulo - SP", "setor": "PI13", "frequencia": "Sexta", "obs": ""}, {"id": "EB123", "endereco": "Praça da ADEP - S/N -Jd Cidade Pirituba - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB124", "endereco": "Rua Manuel Álvares Passos (parque rodrigo de Gasperi) - 46 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB125", "endereco": "Praça da ADEP - S/N -Jd Cidade Pirituba - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB131 ", "endereco": "Praça Waldir Azevedo - 248 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB132", "endereco": "Praça Waldir Azevedo - 369 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB133", "endereco": "Praça Waldir Azevedo - 331 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB144", "endereco": "Rua Doutor José Benedito Viana De Morais - 265 -BUTANTÃ - São Paulo - SP", "setor": "BT27", "frequencia": "Terça", "obs": ""}, {"id": "EB145", "endereco": "Rua Doutor Helio Fidelis - 152 -BUTANTÃ - São Paulo - SP", "setor": "BT27", "frequencia": "Terça", "obs": ""}, {"id": "EB146", "endereco": "Rua Alfredo Xavier de Andrade - 94 -BUTANTÃ - São Paulo - SP", "setor": "BT09", "frequencia": "Sábado", "obs": ""}, {"id": "EB147", "endereco": "Rua Augusto Farina - 220 -BUTANTÃ - São Paulo - SP", "setor": "BT09", "frequencia": "Sábado", "obs": ""}, {"id": "EB150", "endereco": "Praça Elis Regina  - S/N -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB153", "endereco": "Avenida Benjamin Mansur  - 200 -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB151", "endereco": "Praça Elis Regina  - S/N -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB152", "endereco": "Avenida Benjamin Mansur  - 236 -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB160 ", "endereco": "Praça Matauna  - S/N -LAPA  - São Paulo - SP", "setor": "LA18", "frequencia": "Quinta", "obs": ""}, {"id": "EB161", "endereco": "Praça Matauna  - S/N -LAPA  - São Paulo - SP", "setor": "LA18", "frequencia": "Quinta", "obs": ""}, {"id": "EB168", "endereco": "Avenida São Gualter - 900 -PINHEIROS  - São Paulo - SP", "setor": "PI24", "frequencia": "Segunda", "obs": ""}, {"id": "EB169", "endereco": "Praça Comendador Manuel de Melo Pimenta - 149 -PINHEIROS  - São Paulo - SP", "setor": "PI12", "frequencia": "Sexta", "obs": ""}, {"id": "EB170", "endereco": "Rua Cardeal Cagliori - 652 -PINHEIROS  - São Paulo - SP", "setor": "PI24", "frequencia": "Segunda", "obs": ""}, {"id": "EB171", "endereco": "Praça Comendador Manuel de Melo Pimenta - 208 -PINHEIROS  - São Paulo - SP", "setor": "PI12", "frequencia": "Sexta", "obs": ""}, {"id": "EB174", "endereco": "Praça José Alves Pereira - S/N -PIRITUBA - São Paulo - SP", "setor": "PJ03", "frequencia": "Sexta", "obs": ""}, {"id": "EB116", "endereco": "Rua Lino Pinto dos Santos - 400 -jardim Felicidade - São Paulo - SP", "setor": "PJ02", "frequencia": "Quarta", "obs": ""}, {"id": "EB65", "endereco": "Rua Talófitos - 53 -Jardim Cidade Pirituba - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta", "obs": ""}, {"id": "EB110", "endereco": "Rua República dos palmares - 271 -Jardim Cidade Pirituba - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta", "obs": ""}, {"id": "EB60", "endereco": "Avenida Gonçalo Madeira,  - 300 -Jaguaré - São Paulo - SP", "setor": "LA20", "frequencia": "Terça", "obs": ""}, {"id": "EB180", "endereco": "Rua Laranjal do Jari - 120 -Pirituba - São Paulo - SP", "setor": "PJ09", "frequencia": "Sábado", "obs": ""}, {"id": "EB181", "endereco": "Avenida Gonçalo Madeira,  - 600 -LAPA  - São Paulo - SP", "setor": "LA20", "frequencia": "Terça", "obs": ""}, {"id": "EB164", "endereco": "Pr. Acibe Ballan Camasmie - S/N -PINHEIROS  - São Paulo - SP", "setor": "PI34", "frequencia": "Sábado", "obs": ""}];
-let PEVS = loadPevsFromLocal() || PEVS_DEFAULT;
-function loadPevsFromLocal(){
-  try{ const raw = localStorage.getItem('pevs-data-v1'); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+// ============================================================
+// CAMADA DE ARMAZENAMENTO — IndexedDB
+// Object stores: 'kv' (dados gerais), 'photos' (fotos), 'backups' (backups automáticos)
+// ============================================================
+const IDB_NAME = 'rota_pev_db';
+const IDB_VERSION = 1;
+let idbPromise = null;
+
+function openIDB(){
+  if(idbPromise) return idbPromise;
+  idbPromise = new Promise((resolve, reject) => {
+    if(!window.indexedDB){ reject(new Error('IndexedDB indisponível neste navegador')); return; }
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      if(!db.objectStoreNames.contains('photos')) db.createObjectStore('photos');
+      if(!db.objectStoreNames.contains('backups')) db.createObjectStore('backups');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return idbPromise;
 }
+function idbGet(store, key){
+  return openIDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result === undefined ? null : req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function idbSet(store, key, value){
+  return openIDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value, key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+function idbDelete(store, key){
+  return openIDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+function idbGetAllKeys(store){
+  return openIDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAllKeys();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function idbGetAllEntries(store){
+  // retorna [[key, value], ...]
+  return openIDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const os = tx.objectStore(store);
+    const keysReq = os.getAllKeys();
+    const valsReq = os.getAll();
+    tx.oncomplete = () => resolve((keysReq.result||[]).map((k,i)=>[k, (valsReq.result||[])[i]]));
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+// Indicador visual de estado de salvamento (🟢/🟡/🔴)
+function setSaveStatus(state){
+  const el = document.getElementById('save-indicator');
+  if(!el) return;
+  if(state === 'saving'){ el.textContent = '🟡'; el.title = 'Salvando...'; }
+  else if(state === 'error'){ el.textContent = '🔴'; el.title = 'Erro ao salvar — os dados podem não ter sido gravados'; }
+  else { el.textContent = '🟢'; el.title = 'Dados salvos'; }
+}
+
+// Toda gravação de dado do usuário passa por aqui — garante indicador + tratamento de erro uniforme
+async function persist(store, key, value){
+  setSaveStatus('saving');
+  try{
+    await idbSet(store, key, value);
+    setSaveStatus('saved');
+    return true;
+  }catch(e){
+    console.error('Falha ao salvar', store, key, e);
+    setSaveStatus('error');
+    return false;
+  }
+}
+
+// Migra dados antigos do localStorage (versões anteriores do app) para o IndexedDB.
+// Só roda uma vez; só marca como concluído se tudo foi copiado com sucesso.
+async function migrateFromLocalStorageIfNeeded(){
+  if(localStorage.getItem('idb-migration-v1-done')) return;
+  const keyMap = {
+    'visited-status-v1': 'visited-status-v1',
+    'geocode-cache-geoapify-v1': 'geocode-cache-geoapify-v1',
+    'manual-coords-v1': 'manual-coords-v1',
+    'pinned-order-v1': 'pinned-order-v1',
+    'point-flags-v1': 'point-flags-v1',
+    'pevs-data-v1': 'pevs-data-v1'
+  };
+  try{
+    const migratedLsKeys = [];
+    for(const lsKey of Object.keys(keyMap)){
+      const raw = localStorage.getItem(lsKey);
+      if(raw !== null){
+        let parsed;
+        try{ parsed = JSON.parse(raw); }catch(e){ parsed = raw; }
+        await idbSet('kv', keyMap[lsKey], parsed);
+        migratedLsKeys.push(lsKey);
+      }
+    }
+    const photoKeys = [];
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith('photo:')) photoKeys.push(k);
+    }
+    for(const k of photoKeys){
+      const val = localStorage.getItem(k);
+      if(val) await idbSet('photos', k.slice(6), val);
+    }
+    // só limpa o localStorage depois que TUDO foi copiado com sucesso
+    migratedLsKeys.forEach(k => localStorage.removeItem(k));
+    photoKeys.forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('idb-migration-v1-done', '1');
+    if(migratedLsKeys.length || photoKeys.length){
+      console.log('Migração para IndexedDB concluída:', migratedLsKeys.length, 'chaves +', photoKeys.length, 'fotos');
+    }
+  }catch(e){
+    console.error('Migração para IndexedDB falhou, será tentada novamente na próxima abertura', e);
+    // não marca como concluído — os dados antigos continuam intactos no localStorage
+  }
+}
+
+const PEVS_DEFAULT = [{"id": "10018776", "endereco": "Rua Laranjal do Jari, 23, Pirituba - 05172-185 - São Paulo - SP", "setor": "PJ09", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110021002", "endereco": "Rua Talófitos, 53, jardim cidade pirituba - 02945-170 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018743", "endereco": "Rua Jonas Eudoque, 78, Jardim Santo Elias - 05136-250 - São Paulo - SP", "setor": "PJ07", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018803", "endereco": "Rua Doutor Nelson Ferreira de Souza, 90, Pinheiros  - 05467-090 - São Paulo - SP", "setor": "Pi24", "frequencia": "Terça Noturno", "obs": ""}, {"id": "110020643", "endereco": "Rua Laranjal Do Jari, 120, Pirituba - 05172-185 - São Paulo - SP", "setor": "PJ09", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018541", "endereco": "Avenida Benedito de Andrade , 189, Pirituba -  02936-000 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018328", "endereco": "Rua Telmo Coelho Filho, 200, Jardim Olympia - 05543-020 - São Paulo - SP", "setor": "BT25", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018778", "endereco": "Avenida Cabo Adão Pereira, 254, Jardim São José - 02970-000 - São Paulo - SP", "setor": "Pj06", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018314", "endereco": "Rua Sáverio Quadrio, 261, Butantã - 05571-190 - São Paulo - SP", "setor": "BT14", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018315", "endereco": "Rua Sáverio Quadrio, 261, Butantã - 05571-190 - São Paulo - SP", "setor": "BT14", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018281", "endereco": "Rua República dos palmares, 271, jardim cidade pirituba - 02945-160 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020365", "endereco": "Rua Julieta espirito Santo Pinheiro, 300, Vila Albano - 05542-120 - São Paulo - SP", "setor": "BT19", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019331", "endereco": "Avenida Gonçalo Madeira, 300, Jaguaré - 05348-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018702", "endereco": "Rua Corcovado, 217, LAPA - 05038-100 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110020900", "endereco": "Rua Lino Pinto dos Santos, 400, Jardim da Felicidade - 05143-000 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018734", "endereco": "Avenida Cardeal Motta, 468, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018324", "endereco": "Av. Doutor Candido Motta Filho, 557,  - 05351-000 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018735", "endereco": "Avenida Cardeal Motta, 773, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10021580", "endereco": "Rua Olavo Freire, 796, ´Sumaré - 01251-110 - São Paulo - SP", "setor": "LA12", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018741", "endereco": "Rua Clementine Brenne, 896, Jardim Colombo - 05659-000 - São Paulo - SP", "setor": "BT11", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110019335", "endereco": "Avenida Presidente Altino, 1458, Jaguaré - 04116-145 - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018543", "endereco": "Rua Andressa, 500, Jaragua - 02995-140 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018297", "endereco": "Avenida Raimundo Pereira de Magalhaes, 3560, Jardim Iris - 05145-200 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018752", "endereco": "Parque Previdência, S/N, Instituto de Previdência - 05532-030 - São Paulo - SP", "setor": "BT12", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018321", "endereco": "Rua Alfredo Xavier de Andrade, 111, Butantã - 05596-030 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018312", "endereco": "Avenida Vital Brasil, 1111, Butantã - 05503-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018295", "endereco": "Rua Padre Antônio Link, 113, Jardim Ferreira - 05521-160 - São Paulo - SP", "setor": "BT17", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110018737", "endereco": "Rua Aiuca, 118 (Parque Pan Americano), Jardim Vivan - 02993-030 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10019381", "endereco": "Rua Luis Elias Attie, 147, São Domingos - 05127-020 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019383", "endereco": "Avenida Cavaleiros de São Paulo, 155, City América - 05101-240 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019327", "endereco": "Avenida Marquês de São Vicente, 1579,  Várzea da Barra Funda - 01139-003 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110020088", "endereco": "Avenida Valdemar Ferreira, 16, Butantã - 05501-000 - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018296", "endereco": "Avenida do Rio Pequeno, 1660, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018730", "endereco": "Rua Antônio Fernandes Pinheiros, 172, Jardim Cidade Pirituba - 02941-000 - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018307", "endereco": "Avenida do Rio Pequeno, 1735, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019003", "endereco": "Avenida Tomas Edson, 174, Barra Funda - 01140-000 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018310", "endereco": "Avenida Corifeu de Azevedo Marques, 1903, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018329", "endereco": "Rua Vicente Pelosi, 2, Vila Gomes - 05588-010 - São Paulo - SP", "setor": "BT15", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018736", "endereco": "Rua Manoel Ribeiro Rosa, 2, Jardim Cidade Pirituba - 02940-000 - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018729", "endereco": "Avenida Paula Ferreira, 2043, Vila Pirituba - 02915-100 - São Paulo - SP", "setor": "PJ01", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018309", "endereco": "Avenida Corifeu de Azevedo Marques, 2076, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018322", "endereco": "Rua Dr Manuel de Paiva Ramos, 211, Rio Pequeno - 05351-015 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018294", "endereco": "Avenida Professor Francisco Morato, 2116, Butantã - 05512-200 - São Paulo - SP", "setor": "BT05", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018300", "endereco": "Rua Santanesia, 218, Butantã - 05580-050 - São Paulo - SP", "setor": "BT04", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018299", "endereco": "Avenida Corifeu de Azevedo Marques, 22, Butantã - 05582-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110021000", "endereco": "Avenida Marechal Mario Guedes, 221, Jaguaré - 05348-010 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018308", "endereco": "Avenida Corifeu de Azevedo Marques, 2258, Butantã - 05581-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018320", "endereco": "Avenida Comendador Alberto Bonfigliori, 226, Jardim Bonfiglioli - 05593-000 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018298", "endereco": "Rua Aiuca, 23 (Parque Pan Americano), Jardim Vivan - 02993-030 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018732", "endereco": "Avenida do Anastácio, 241, City America - 05119-000 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020656", "endereco": "Rua Icádio, 250, Chácara Jaraguá - 05101-250 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019380", "endereco": "Rua Ademar Martins de Freitas, 257, Jardim Santo Elias - 05135-300 - São Paulo - SP", "setor": "PJ07", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019374", "endereco": "Rua Antônio Galvão Medeiros, 29, Jardim Vivan - 02992-100 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110020087", "endereco": "Avenida General Mac Artur, 30, Vila Lageado - 05338-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018330", "endereco": "Rua José Franco Silva, 321, Cidade São Francisco - 05356-010 - São Paulo - SP", "setor": "BT27", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018738", "endereco": "Rua Aquibi, 33 (Parque Pan Americano), Jardim Vivan - 02993-010 - São Paulo - SP", "setor": "PJ04", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018319", "endereco": "Avenida Comendador Alberto Bonfigliori, 459, Jardim Bonfiglioli - 05593-000 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110019358", "endereco": "Avenida Ermano Marchetti, 481, Agua Branca - 05038-100 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018293", "endereco": "Rua Padre Guido Del Toro, 520, Chácara Inglesa - 05142-120 - São Paulo - SP", "setor": "PJ02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018311", "endereco": "Avenida Corifeu de Azevedo Marques, 544, Butantã - 03601-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019326", "endereco": "Avenida Marquês de São Vicente, 553,  Várzea da Barra Funda - 01139-003 - São Paulo - SP", "setor": "LA21", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10018306", "endereco": "Avenida do Rio Pequeno, 557, Rio Pequeno - 05379-000 - São Paulo - SP", "setor": "BT24", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "110019359", "endereco": "Avenida Ermano Marchetti, 569, Agua Branca - 05038-000 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "110019336", "endereco": "Praça General Porto Carreiro, 57, Jaguaré - 05331-040 - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado Noturno", "obs": ""}, {"id": "10018318", "endereco": "Avenida Comendador Alberto Bonfigliori, 573, Jardim Bonfiglioli - 05593-001 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "110020638", "endereco": "Rua Willis Roberto Banks, 658, Parque Maria Domitila - 05128-000 - São Paulo - SP", "setor": "PJ11", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018326", "endereco": "Avenida Candido Mota Filho, 700, Cidade São Francisco - 05351-000 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018317", "endereco": "Praça Isai Leirner, 78, Jardim Bonfiglioli - 05592-140 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018316", "endereco": "Praça Isai Leirner, 78, Jardim Bonfiglioli - 05592-140 - São Paulo - SP", "setor": "BT09", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018733", "endereco": "Avenida Cardeal Motta, 800, City America - 05101-210 - São Paulo - SP", "setor": "PJ08", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10018301", "endereco": "Avenida Professor Francisco Morato, 808, Butantã - 05512-000 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018327", "endereco": "Rua Dr José Benedito Viana de Moraes, 90, Rio Pequeno - 05351-005 - São Paulo - SP", "setor": "BT27", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018726", "endereco": "Estrada São Paulo Jundiaí, 901, Perus - 05230-000 - São Paulo - SP", "setor": "Pj02", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "110019141", "endereco": "Avenida Vital Brasil, 907, Butantã - 05503-001 - São Paulo - SP", "setor": "BT02", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "10018739", "endereco": "Avenida Darcy Reis, 951, Parque Dos Principes - 05396-450 - São Paulo - SP", "setor": "BT13", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018742", "endereco": "Avenida Darcy Reis, 951, Parque Dos Principes - 05396-450 - São Paulo - SP", "setor": "BT13", "frequencia": "Sabado Noturno", "obs": ""}, {"id": "10018575", "endereco": "Praça Cap Matheus de Andrade, S/N, Vila Madalena -  05449-120 - São Paulo - SP", "setor": "PI11", "frequencia": "Segunda Diurno", "obs": ""}, {"id": "110019382", "endereco": "Praça José Alves Pereira, S/N, Cidade D'Abril - 05182-270 - São Paulo - SP", "setor": "PJ03", "frequencia": "Sexta Diurno", "obs": ""}, {"id": "10021575", "endereco": "Av. Raimundo Pereira de Magalhães, 2239, Pirituba - 05145-000 - São Paulo - SP", "setor": "PJ02", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021567", "endereco": "Avenida Gonçalo Madeira, , 600, Lapa - 05348-000 - São Paulo - SP", "setor": "LA20", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021821", "endereco": "Rua Manequinho, 146, Lapa - 05065-130 - São Paulo - SP", "setor": "LA22", "frequencia": "Segunda Noturno", "obs": ""}, {"id": "10021822", "endereco": "Rua Orlando Malagoli, 43, Butantã - 05361-020 - São Paulo - SP", "setor": "BT15", "frequencia": "Quarta Diurno", "obs": ""}, {"id": "EB01", "endereco": "R. Engenheiro Oscar Americano - 502 -JARDIM GUEDALA - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta", "obs": ""}, {"id": "EB02", "endereco": "R. Engenheiro Oscar Americano - 502 -JARDIM GUEDALA - São Paulo - SP", "setor": "BT07", "frequencia": "Quarta", "obs": ""}, {"id": "EB24", "endereco": "R. Antonio Fernandes Pinheiro (parque rodrigo de Gasperi) - 217 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB25", "endereco": "R. Antonio Fernandes Pinheiro (parque rodrigo de Gasperi) - 217 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB26", "endereco": "Av. Cardeal Motta - 84 - CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB27", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB28", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB29", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB30", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB31", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB32", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB33", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB34", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB35", "endereco": "Av. Cardeal Motta - 84 -CITY AMÉRICA - São Paulo - SP", "setor": "PJ08", "frequencia": "Quinta", "obs": ""}, {"id": "EB68", "endereco": "Rua Coronel José Venâncio Dias - 840 -PIRITUBA/JARAGUA - São Paulo - SP", "setor": "PJ09", "frequencia": "Sábado", "obs": ""}, {"id": "EB80", "endereco": "Praça Sebastião Jayme Pinto - S/N -LAPA  - São Paulo - SP", "setor": "LA22", "frequencia": "Sábado", "obs": ""}, {"id": "EB117", "endereco": "Rua Dona Elisa de Moraes Mendes - 613 -PINHEIROS  - São Paulo - SP", "setor": "PI13", "frequencia": "Sexta", "obs": ""}, {"id": "EB123", "endereco": "Praça da ADEP - S/N -Jd Cidade Pirituba - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB124", "endereco": "Rua Manuel Álvares Passos (parque rodrigo de Gasperi) - 46 -VILA SANTO ANTÔNIO - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB125", "endereco": "Praça da ADEP - S/N -Jd Cidade Pirituba - São Paulo - SP", "setor": "PJ06", "frequencia": "Sexta", "obs": ""}, {"id": "EB131 ", "endereco": "Praça Waldir Azevedo - 248 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB132", "endereco": "Praça Waldir Azevedo - 369 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB133", "endereco": "Praça Waldir Azevedo - 331 -PINHEIROS  - São Paulo - SP", "setor": "PI11", "frequencia": "Quarta", "obs": ""}, {"id": "EB144", "endereco": "Rua Doutor José Benedito Viana De Morais - 265 -BUTANTÃ - São Paulo - SP", "setor": "BT27", "frequencia": "Terça", "obs": ""}, {"id": "EB145", "endereco": "Rua Doutor Helio Fidelis - 152 -BUTANTÃ - São Paulo - SP", "setor": "BT27", "frequencia": "Terça", "obs": ""}, {"id": "EB146", "endereco": "Rua Alfredo Xavier de Andrade - 94 -BUTANTÃ - São Paulo - SP", "setor": "BT09", "frequencia": "Sábado", "obs": ""}, {"id": "EB147", "endereco": "Rua Augusto Farina - 220 -BUTANTÃ - São Paulo - SP", "setor": "BT09", "frequencia": "Sábado", "obs": ""}, {"id": "EB150", "endereco": "Praça Elis Regina  - S/N -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB153", "endereco": "Avenida Benjamin Mansur  - 200 -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB151", "endereco": "Praça Elis Regina  - S/N -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB152", "endereco": "Avenida Benjamin Mansur  - 236 -BUTANTÃ - São Paulo - SP", "setor": "BT04", "frequencia": "Quinta", "obs": ""}, {"id": "EB160 ", "endereco": "Praça Matauna  - S/N -LAPA  - São Paulo - SP", "setor": "LA18", "frequencia": "Quinta", "obs": ""}, {"id": "EB161", "endereco": "Praça Matauna  - S/N -LAPA  - São Paulo - SP", "setor": "LA18", "frequencia": "Quinta", "obs": ""}, {"id": "EB168", "endereco": "Avenida São Gualter - 900 -PINHEIROS  - São Paulo - SP", "setor": "PI24", "frequencia": "Segunda", "obs": ""}, {"id": "EB169", "endereco": "Praça Comendador Manuel de Melo Pimenta - 149 -PINHEIROS  - São Paulo - SP", "setor": "PI12", "frequencia": "Sexta", "obs": ""}, {"id": "EB170", "endereco": "Rua Cardeal Cagliori - 652 -PINHEIROS  - São Paulo - SP", "setor": "PI24", "frequencia": "Segunda", "obs": ""}, {"id": "EB171", "endereco": "Praça Comendador Manuel de Melo Pimenta - 208 -PINHEIROS  - São Paulo - SP", "setor": "PI12", "frequencia": "Sexta", "obs": ""}, {"id": "EB174", "endereco": "Praça José Alves Pereira - S/N -PIRITUBA - São Paulo - SP", "setor": "PJ03", "frequencia": "Sexta", "obs": ""}, {"id": "EB116", "endereco": "Rua Lino Pinto dos Santos - 400 -jardim Felicidade - São Paulo - SP", "setor": "PJ02", "frequencia": "Quarta", "obs": ""}, {"id": "EB65", "endereco": "Rua Talófitos - 53 -Jardim Cidade Pirituba - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta", "obs": ""}, {"id": "EB110", "endereco": "Rua República dos palmares - 271 -Jardim Cidade Pirituba - São Paulo - SP", "setor": "PJ05", "frequencia": "Sexta", "obs": ""}, {"id": "EB60", "endereco": "Avenida Gonçalo Madeira,  - 300 -Jaguaré - São Paulo - SP", "setor": "LA20", "frequencia": "Terça", "obs": ""}, {"id": "EB180", "endereco": "Rua Laranjal do Jari - 120 -Pirituba - São Paulo - SP", "setor": "PJ09", "frequencia": "Sábado", "obs": ""}, {"id": "EB181", "endereco": "Avenida Gonçalo Madeira,  - 600 -LAPA  - São Paulo - SP", "setor": "LA20", "frequencia": "Terça", "obs": ""}, {"id": "EB164", "endereco": "Pr. Acibe Ballan Camasmie - S/N -PINHEIROS  - São Paulo - SP", "setor": "PI34", "frequencia": "Sábado", "obs": ""}];
+let PEVS = PEVS_DEFAULT;
+let photoCache = {};
 
 const STORAGE_VISITED_KEY = 'visited-status-v1';
 const STORAGE_GEOCODE_KEY = 'geocode-cache-geoapify-v1';
@@ -217,37 +356,54 @@ function haversine(lat1, lon1, lat2, lon2){
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function loadVisited(){
-  try{ const r = localStorage.getItem(STORAGE_VISITED_KEY); visited = r ? JSON.parse(r) : {}; }catch(e){ visited = {}; }
+async function loadVisited(){
+  try{ const r = await idbGet('kv', STORAGE_VISITED_KEY); visited = r || {}; }catch(e){ visited = {}; }
 }
-function saveVisited(){
-  try{ localStorage.setItem(STORAGE_VISITED_KEY, JSON.stringify(visited)); }catch(e){}
+async function saveVisited(){
+  await persist('kv', STORAGE_VISITED_KEY, visited);
 }
-function loadGeocodeCache(){
-  try{ const r = localStorage.getItem(STORAGE_GEOCODE_KEY); geocodeCache = r ? JSON.parse(r) : {}; }catch(e){ geocodeCache = {}; }
+async function loadGeocodeCache(){
+  try{ const r = await idbGet('kv', STORAGE_GEOCODE_KEY); geocodeCache = r || {}; }catch(e){ geocodeCache = {}; }
 }
-function saveGeocodeCache(){
-  try{ localStorage.setItem(STORAGE_GEOCODE_KEY, JSON.stringify(geocodeCache)); }catch(e){}
+async function saveGeocodeCache(){
+  await persist('kv', STORAGE_GEOCODE_KEY, geocodeCache);
 }
-function loadManualCoords(){
-  try{ const r = localStorage.getItem(STORAGE_MANUAL_KEY); manualCoords = r ? JSON.parse(r) : {}; }catch(e){ manualCoords = {}; }
+async function loadManualCoords(){
+  try{ const r = await idbGet('kv', STORAGE_MANUAL_KEY); manualCoords = r || {}; }catch(e){ manualCoords = {}; }
 }
-function saveManualCoords(){
-  try{ localStorage.setItem(STORAGE_MANUAL_KEY, JSON.stringify(manualCoords)); }catch(e){}
+async function saveManualCoords(){
+  await persist('kv', STORAGE_MANUAL_KEY, manualCoords);
 }
-function loadPinnedOrder(){
-  try{ const r = localStorage.getItem('pinned-order-v1'); pinnedOrder = r ? JSON.parse(r) : {}; }catch(e){ pinnedOrder = {}; }
+async function loadPinnedOrder(){
+  try{ const r = await idbGet('kv', 'pinned-order-v1'); pinnedOrder = r || {}; }catch(e){ pinnedOrder = {}; }
 }
-function savePinnedOrder(){
-  try{ localStorage.setItem('pinned-order-v1', JSON.stringify(pinnedOrder)); }catch(e){}
+async function savePinnedOrder(){
+  await persist('kv', 'pinned-order-v1', pinnedOrder);
 }
-function loadFlags(){
-  try{ const r = localStorage.getItem('point-flags-v1'); flags = r ? JSON.parse(r) : {}; }catch(e){ flags = {}; }
+async function loadFlags(){
+  try{ const r = await idbGet('kv', 'point-flags-v1'); flags = r || {}; }catch(e){ flags = {}; }
 }
-function saveFlags(){
-  try{ localStorage.setItem('point-flags-v1', JSON.stringify(flags)); }catch(e){}
+async function saveFlags(){
+  await persist('kv', 'point-flags-v1', flags);
 }
 let flags = {};
+
+// Fotos: cache em memória (leitura instantânea/síncrona pra renderização) + gravação em IndexedDB
+async function loadAllPhotosToCache(){
+  try{
+    const entries = await idbGetAllEntries('photos');
+    photoCache = {};
+    entries.forEach(([k,v]) => { if(v) photoCache[k] = v; });
+  }catch(e){ photoCache = {}; }
+}
+async function setPhoto(id, dataUrl){
+  photoCache[id] = dataUrl;
+  return await persist('photos', id, dataUrl);
+}
+async function deletePhoto(id){
+  delete photoCache[id];
+  try{ await idbDelete('photos', id); }catch(e){}
+}
 
 function getActiveCoord(id){
   return manualCoords[id] || geocodeCache[id] || null;
@@ -388,10 +544,10 @@ async function runGeocoding(){
     done++;
     document.getElementById('geo-progress').style.width = Math.round(done/missing.length*100) + '%';
     document.getElementById('geo-count').textContent = done + ' / ' + missing.length;
-    if(done % 10 === 0) saveGeocodeCache();
+    if(done % 10 === 0) await saveGeocodeCache();
     await new Promise(r => setTimeout(r, 50));
   }
-  saveGeocodeCache();
+  await saveGeocodeCache();
   overlay.classList.add('hidden');
   if(suspectCount > 0){
     showBanner('warn', suspectCount + ' ponto(s) vieram com coordenada fora da Grande São Paulo e foram marcados como "Verificar local" na lista. Use "Ajustar pino" ou "Salvar pelo GPS" pra corrigir.');
@@ -428,6 +584,87 @@ function getPosition(){
       {enableHighAccuracy:true, timeout:5000}
     );
   });
+}
+
+// ============================================================
+// BACKUPS AUTOMÁTICOS — antes de operações destrutivas
+// Política: no máx 1 backup automático a cada 24h, no máx 3 guardados (o mais antigo cai pra abrir espaço).
+// Backups de exclusão de 1 ponto só guardam os dados daquele ponto (não duplica todas as fotos).
+// ============================================================
+const AUTO_BACKUP_MAX = 3;
+const AUTO_BACKUP_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+async function listAutoBackups(){
+  try{
+    const entries = await idbGetAllEntries('backups');
+    return entries.map(([k,v]) => v).filter(Boolean).sort((a,b) => a.timestamp - b.timestamp);
+  }catch(e){ return []; }
+}
+
+async function pruneAutoBackups(){
+  const all = await listAutoBackups();
+  while(all.length > AUTO_BACKUP_MAX){
+    const oldest = all.shift();
+    try{ await idbDelete('backups', oldest.id); }catch(e){}
+  }
+}
+
+function buildFullSnapshot(){
+  return {
+    visited, geocodeCache, manualCoords, pinnedOrder, flags,
+    pevs: PEVS,
+    photos: {...photoCache}
+  };
+}
+
+async function createAutoBackup(reason, scope){
+  try{
+    const scopeType = (scope && scope.type) || 'full';
+    const all = await listAutoBackups();
+    const lastSameType = [...all].reverse().find(b => b.data && b.data.scope === scopeType);
+    if(lastSameType && (Date.now() - lastSameType.timestamp) < AUTO_BACKUP_MIN_INTERVAL_MS){
+      return null; // já existe um backup do MESMO TIPO recente o suficiente, evita duplicar
+    }
+    let data;
+    if(scope && scope.type === 'single'){
+      const p = PEVS.find(x => x.id === scope.id);
+      data = { scope: 'single', pev: p || null, id: scope.id,
+        visited: visited[scope.id] || false, flags: flags[scope.id] || null,
+        manualCoord: manualCoords[scope.id] || null, geocodeCoord: geocodeCache[scope.id] || null,
+        photo: photoCache[scope.id] || null };
+    }else{
+      data = { scope: 'full', ...buildFullSnapshot() };
+    }
+    const id = 'auto_' + Date.now();
+    const record = { id, type: 'auto', reason, timestamp: Date.now(), data };
+    await idbSet('backups', id, record);
+    await pruneAutoBackups();
+    const count = (await listAutoBackups()).length;
+    updateAutoBackupInfo(count);
+    showBanner('info', 'Backup automático criado antes de "' + reason + '". Você tem ' + count + ' backup(s) automático(s) guardado(s) no aparelho.');
+    return record;
+  }catch(e){
+    console.error('Falha ao criar backup automático', e);
+    return null;
+  }
+}
+
+function updateAutoBackupInfo(count){
+  const el = document.getElementById('auto-backup-info');
+  if(el) el.textContent = 'Backups automáticos guardados: ' + count + '/' + AUTO_BACKUP_MAX;
+}
+
+// Restaura um snapshot completo (usado tanto pelo arquivo de backup manual quanto pelos automáticos)
+async function restoreFullSnapshot(data){
+  if(data.visited) { visited = data.visited; await saveVisited(); }
+  if(data.geocodeCache) { geocodeCache = data.geocodeCache; await saveGeocodeCache(); }
+  if(data.manualCoords) { manualCoords = data.manualCoords; await saveManualCoords(); }
+  if(data.pinnedOrder) { pinnedOrder = data.pinnedOrder; await savePinnedOrder(); }
+  if(data.flags) { flags = data.flags; await saveFlags(); }
+  if(data.pevs) { PEVS = data.pevs; await persist('kv', 'pevs-data-v1', PEVS); }
+  if(data.photos){
+    for(const k of Object.keys(data.photos)){ await setPhoto(k, data.photos[k]); }
+  }
 }
 
 function resolvePinnedSlots(pending){
@@ -586,7 +823,7 @@ function renderList(){
     const orderLabel = isDone ? '✓' : (routeOrder.findIndex(r=>r.id===p.id) + 1);
     
     let photoHtml = '<button class="btn small" data-photo="'+p.id+'">Tirar foto</button>';
-    const ph = localStorage.getItem('photo:'+p.id);
+    const ph = photoCache[p.id];
     if(ph){ photoHtml = '<img class="thumb" src="'+ph+'" data-viewphoto="'+p.id+'"><button class="btn small" data-photo="'+p.id+'">Refazer foto</button>'; }
 
     card.innerHTML =
@@ -610,6 +847,7 @@ function renderList(){
           '<button class="btn small" data-editpin="'+p.id+'">Ajustar pino</button>'+
           '<a class="nav-link gmaps" href="'+gmapsUrl(p)+'" target="_blank" rel="noopener">Maps</a>'+
           '<a class="nav-link waze" href="'+wazeUrl(p)+'" target="_blank" rel="noopener">Waze</a>'+
+          '<button class="btn small danger" data-deletepev="'+p.id+'">Excluir</button>'+
         '</div>'+
       '</div>';
     container.appendChild(card);
@@ -722,16 +960,71 @@ function parseUploadedSheet(rows){
 }
 
 async function applyNewSheet(newPevs){
+  await createAutoBackup('importar nova planilha', {type:'full'});
+  const oldIds = PEVS.map(p=>p.id);
   PEVS = newPevs;
-  localStorage.setItem('pevs-data-v1', JSON.stringify(PEVS));
-  for(const p of PEVS){ localStorage.removeItem('photo:'+p.id); }
+  await persist('kv', 'pevs-data-v1', PEVS);
+  for(const id of oldIds){ await deletePhoto(id); }
   visited = {};
-  saveVisited();
+  await saveVisited();
   geocodingAborted = false;
   document.getElementById('modal-slot').innerHTML = '';
   document.getElementById('geocode-overlay').classList.remove('hidden');
   await runGeocoding();
   currentPos = await getPosition();
+  await refreshAll();
+}
+
+async function deletePev(id){
+  await createAutoBackup('exclusão de endereço #' + id, {type:'single', id});
+  PEVS = PEVS.filter(p => p.id !== id);
+  await persist('kv', 'pevs-data-v1', PEVS);
+  delete visited[id]; await saveVisited();
+  delete flags[id]; await saveFlags();
+  delete manualCoords[id]; await saveManualCoords();
+  delete geocodeCache[id]; await saveGeocodeCache();
+  delete pinnedOrder[id]; await savePinnedOrder();
+  await deletePhoto(id);
+  await refreshAll(routeUsesRealTime);
+}
+
+async function openAutoBackupsModal(){
+  const backups = (await listAutoBackups()).slice().reverse();
+  const fmt = (ts) => new Date(ts).toLocaleString('pt-BR');
+  let itemsHtml = backups.length ? '' : '<p>Nenhum backup automático foi criado ainda.</p>';
+  backups.forEach(b => {
+    const label = b.data.scope === 'single' ? ('Ponto único #' + b.data.id) : 'Snapshot completo';
+    itemsHtml += '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin-bottom:8px;">'+
+      '<p style="margin:0 0 4px;font-size:13px;"><b>'+label+'</b><br>'+fmt(b.timestamp)+'<br>Motivo: '+b.reason+'</p>'+
+      '<button class="btn small full" data-restoreauto="'+b.id+'">Restaurar este backup</button>'+
+      '</div>';
+  });
+  document.getElementById('modal-slot').innerHTML =
+    '<div class="modal-bg" id="auto-backups-modal-bg"><div class="modal" style="max-height:80vh;overflow-y:auto;">'+
+    '<h3>Backups automáticos</h3>'+
+    itemsHtml+
+    '<button class="btn full" id="close-auto-backups-modal" style="margin-top:8px;">Fechar</button>'+
+    '</div></div>';
+}
+
+async function restoreAutoBackup(id){
+  const all = await listAutoBackups();
+  const record = all.find(b => b.id === id);
+  if(!record) return;
+  if(record.data.scope === 'single'){
+    const d = record.data;
+    if(d.pev && !PEVS.find(p=>p.id===d.id)) PEVS.push(d.pev);
+    if(d.visited) visited[d.id] = true; await saveVisited();
+    if(d.flags) { flags[d.id] = d.flags; await saveFlags(); }
+    if(d.manualCoord) { manualCoords[d.id] = d.manualCoord; await saveManualCoords(); }
+    if(d.geocodeCoord) { geocodeCache[d.id] = d.geocodeCoord; await saveGeocodeCache(); }
+    if(d.photo) { await setPhoto(d.id, d.photo); }
+    await persist('kv', 'pevs-data-v1', PEVS);
+  }else{
+    await restoreFullSnapshot(record.data);
+  }
+  document.getElementById('modal-slot').innerHTML = '';
+  alert('Backup restaurado com sucesso!');
   await refreshAll();
 }
 
@@ -780,7 +1073,7 @@ document.addEventListener('click', async (e) => {
     if(editMarker){
       const pos = editMarker.getLatLng();
       manualCoords[id] = [pos.lat, pos.lng];
-      saveManualCoords();
+      await saveManualCoords();
       document.getElementById('modal-slot').innerHTML = '';
       await refreshAll();
     }
@@ -791,7 +1084,7 @@ document.addEventListener('click', async (e) => {
     const pos = await getPosition();
     if(pos){
       manualCoords[id] = pos;
-      saveManualCoords();
+      await saveManualCoords();
       document.getElementById('modal-slot').innerHTML = '';
       await refreshAll();
     }else{
@@ -809,7 +1102,7 @@ document.addEventListener('click', async (e) => {
     const slot = parseInt(input.value, 10);
     if(slot && slot >= 1){
       pinnedOrder[id] = slot;
-      savePinnedOrder();
+      await savePinnedOrder();
     }
     document.getElementById('modal-slot').innerHTML = '';
     await refreshAll(routeUsesRealTime);
@@ -818,7 +1111,7 @@ document.addEventListener('click', async (e) => {
   if(e.target.id === 'unpin-slot-btn'){
     const id = e.target.dataset.id;
     delete pinnedOrder[id];
-    savePinnedOrder();
+    await savePinnedOrder();
     document.getElementById('modal-slot').innerHTML = '';
     await refreshAll(routeUsesRealTime);
     return;
@@ -826,10 +1119,30 @@ document.addEventListener('click', async (e) => {
   const viewPhoto = e.target.closest('[data-viewphoto]');
   if(viewPhoto){
     const id = viewPhoto.dataset.viewphoto;
-    const photoData = localStorage.getItem('photo:'+id);
+    const photoData = photoCache[id];
     document.getElementById('modal-slot').innerHTML =
       '<div class="modal-bg" id="photo-modal-bg"><div class="modal"><img src="'+photoData+'">'+
       '<div class="modal-actions"><button class="btn full" id="close-photo-modal">Fechar</button></div></div></div>';
+    return;
+  }
+  const deleteBtn = e.target.closest('[data-deletepev]');
+  if(deleteBtn){
+    const id = deleteBtn.dataset.deletepev;
+    const p = PEVS.find(x => x.id === id);
+    document.getElementById('modal-slot').innerHTML =
+      '<div class="modal-bg" id="delete-pev-modal-bg"><div class="modal"><h3>Excluir este endereço?</h3>'+
+      '<p>#'+id+' - '+(p?p.endereco:'')+'<br><br>O endereço, seus registros (visita, limpeza, adesivos, posição ajustada) e a foto associada serão removidos. Um backup automático é criado antes, caso precise recuperar.</p>'+
+      '<div class="modal-actions"><button class="btn full danger" id="confirm-delete-pev" data-id="'+id+'">Excluir</button><button class="btn full" id="cancel-delete-pev">Cancelar</button></div></div></div>';
+    return;
+  }
+  if(e.target.id === 'cancel-delete-pev'){
+    document.getElementById('modal-slot').innerHTML = '';
+    return;
+  }
+  if(e.target.id === 'confirm-delete-pev'){
+    const id = e.target.dataset.id;
+    await deletePev(id);
+    document.getElementById('modal-slot').innerHTML = '';
     return;
   }
   if(e.target.id === 'close-photo-modal' || e.target.id === 'photo-modal-bg'){
@@ -853,11 +1166,12 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if(e.target.id === 'confirm-reset'){
+    await createAutoBackup('reiniciar mês', {type:'full'});
     for(const p of PEVS){
-      localStorage.removeItem('photo:'+p.id);
+      await deletePhoto(p.id);
     }
     visited = {};
-    saveVisited();
+    await saveVisited();
     document.getElementById('modal-slot').innerHTML = '';
     await refreshAll();
     return;
@@ -898,7 +1212,7 @@ document.addEventListener('click', async (e) => {
     const zip = new JSZip();
     let count = 0;
     for(const p of PEVS){
-      const ph = localStorage.getItem('photo:'+p.id);
+      const ph = photoCache[p.id];
       if(ph){
         const base64 = ph.split(',')[1];
         zip.file(p.id + '.jpg', base64, {base64:true});
@@ -916,25 +1230,32 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if(e.target.id === 'export-backup-btn'){
-    const backupData = {
-      visited,
-      geocodeCache,
-      manualCoords,
-      pinnedOrder,
-      flags,
-      photos: {}
-    };
-    for(const p of PEVS){
-      const ph = localStorage.getItem('photo:'+p.id);
-      if(ph) backupData.photos[p.id] = ph;
-    }
+    const backupData = { scope:'full', ...buildFullSnapshot() };
     const blob = new Blob([JSON.stringify(backupData)], {type: 'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'backup_rota_pev_' + new Date().toISOString().slice(0,10) + '.json';
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    const stamp = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'_'+pad(now.getHours())+'-'+pad(now.getMinutes());
+    a.download = 'backup_rota_pev_' + stamp + '.json';
     a.click();
     URL.revokeObjectURL(url);
+    return;
+  }
+  if(e.target.id === 'view-auto-backups-btn'){
+    await openAutoBackupsModal();
+    return;
+  }
+  if(e.target.id === 'close-auto-backups-modal' || e.target.id === 'auto-backups-modal-bg'){
+    document.getElementById('modal-slot').innerHTML = '';
+    return;
+  }
+  const restoreAutoBtn = e.target.closest('[data-restoreauto]');
+  if(restoreAutoBtn){
+    if(confirm('Restaurar este backup? Isso vai sobrescrever os dados atuais desse item/estado.')){
+      await restoreAutoBackup(restoreAutoBtn.dataset.restoreauto);
+    }
     return;
   }
   if(e.target.id === 'import-backup-btn'){
@@ -971,7 +1292,7 @@ document.addEventListener('change', async (e) => {
   if(e.target.matches('[data-visit]')){
     const id = e.target.dataset.visit;
     visited[id] = e.target.checked;
-    saveVisited();
+    await saveVisited();
     await refreshAll();
     return;
   }
@@ -980,7 +1301,7 @@ document.addEventListener('change', async (e) => {
     const flagName = e.target.dataset.flag;
     if(!flags[id]) flags[id] = {};
     flags[id][flagName] = e.target.checked;
-    saveFlags();
+    await saveFlags();
     return;
   }
   if(e.target.id === 'backup-input' && e.target.files[0]){
@@ -989,14 +1310,7 @@ document.addEventListener('change', async (e) => {
     reader.onload = async (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
-        if(data.visited) { visited = data.visited; saveVisited(); }
-        if(data.geocodeCache) { geocodeCache = data.geocodeCache; saveGeocodeCache(); }
-        if(data.manualCoords) { manualCoords = data.manualCoords; saveManualCoords(); }
-        if(data.pinnedOrder) { pinnedOrder = data.pinnedOrder; savePinnedOrder(); }
-        if(data.flags) { flags = data.flags; saveFlags(); }
-        if(data.photos) {
-          Object.keys(data.photos).forEach(k => localStorage.setItem('photo:'+k, data.photos[k]));
-        }
+        await restoreFullSnapshot(data);
         alert('Backup restaurado com sucesso!');
         await refreshAll();
       } catch(err) {
@@ -1019,7 +1333,7 @@ document.addEventListener('change', async (e) => {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
-        try{ localStorage.setItem('photo:'+activePhotoId, dataUrl); }catch(err){}
+        await setPhoto(activePhotoId, dataUrl);
         e.target.value = '';
         await refreshAll();
       };
@@ -1031,11 +1345,25 @@ document.addEventListener('change', async (e) => {
 
 async function init(){
   document.getElementById('month-label').textContent = new Date().toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
-  loadVisited();
-  loadGeocodeCache();
-  loadManualCoords();
-  loadPinnedOrder();
-  loadFlags();
+  setSaveStatus('saving');
+  try{
+    await migrateFromLocalStorageIfNeeded();
+    const storedPevs = await idbGet('kv', 'pevs-data-v1');
+    if(storedPevs) PEVS = storedPevs;
+    await loadAllPhotosToCache();
+    await loadVisited();
+    await loadGeocodeCache();
+    await loadManualCoords();
+    await loadPinnedOrder();
+    await loadFlags();
+    setSaveStatus('saved');
+  }catch(e){
+    console.error('Erro ao carregar dados salvos', e);
+    setSaveStatus('error');
+    showBanner('warn', 'Não foi possível acessar o armazenamento local do navegador. Os dados desta sessão podem não ser salvos.');
+  }
+  const backupCount = (await listAutoBackups()).length;
+  updateAutoBackupInfo(backupCount);
   await runGeocoding();
   currentPos = await getPosition();
   if(!currentPos && !geocodingAborted){
