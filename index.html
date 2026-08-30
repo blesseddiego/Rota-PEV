@@ -126,7 +126,7 @@ button{font-family:var(--font-body);cursor:pointer;}
   <p id="geo-status">Buscando coordenadas exatas para montar o mapa e calcular a rota...</p>
   <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
   <div class="progress-label" id="geo-count">0 / 0</div>
-  <div class="version-tag">Versão 7.0</div>
+  <div class="version-tag">Versão 3.0</div>
   <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
 </div>
 
@@ -418,8 +418,14 @@ async function deletePhoto(id){
   try{ await idbDelete('photos', id); }catch(e){}
 }
 
+function isValidCoord(c){
+  return Array.isArray(c) && c.length >= 2 &&
+    typeof c[0] === 'number' && typeof c[1] === 'number' &&
+    isFinite(c[0]) && isFinite(c[1]);
+}
 function getActiveCoord(id){
-  return manualCoords[id] || geocodeCache[id] || null;
+  const c = manualCoords[id] || geocodeCache[id] || null;
+  return isValidCoord(c) ? c : null;
 }
 
 // Bounding box aproximado da Grande São Paulo, usado como trava de sanidade
@@ -711,6 +717,11 @@ function resolvePinnedSlots(pending){
   pinnedAssignments.forEach(pa => {
     let s = pa.slot;
     while(usedSlots.has(s) && s < totalSlots) s++;
+    if(usedSlots.has(s)){
+      // não sobrou posição livre pra esse ponto fixado — ele volta a ser
+      // posicionado normalmente pelo algoritmo em vez de sobrescrever outro ponto
+      return;
+    }
     usedSlots.add(s);
     finalSlotForId[pa.id] = s;
   });
@@ -850,47 +861,58 @@ function renderList(){
   const items = [...routeOrder, ...visitedOnly];
   for(let i=0;i<items.length;i++){
     const p = items[i];
-    const isDone = !!visited[p.id];
-    const isManual = !!manualCoords[p.id];
-    const isSuspect = !isManual && geocodeCache[p.id] && geocodeCache[p.id][2] === true;
-    const vs = visitStatus[p.id];
-    const card = document.createElement('div');
-    card.className = 'card' + (isDone ? ' done' : '');
-    const orderLabel = isDone ? '✓' : (routeOrder.findIndex(r=>r.id===p.id) + 1);
-    
-    let photoHtml = '<button class="btn small" data-photo="'+p.id+'">Tirar foto</button><button class="btn small" data-photogallery="'+p.id+'">Galeria</button>';
-    const ph = photoCache[p.id];
-    if(ph){ photoHtml = '<img class="thumb" src="'+ph+'" data-viewphoto="'+p.id+'"><button class="btn small" data-photo="'+p.id+'">Refazer</button><button class="btn small" data-photogallery="'+p.id+'">Galeria</button>'; }
+    try{
+      const isDone = !!visited[p.id];
+      const isManual = !!manualCoords[p.id];
+      const isSuspect = !isManual && geocodeCache[p.id] && geocodeCache[p.id][2] === true;
+      const vs = visitStatus[p.id];
+      const card = document.createElement('div');
+      card.className = 'card' + (isDone ? ' done' : '');
+      const orderLabel = isDone ? '✓' : (routeOrder.findIndex(r=>r.id===p.id) + 1);
 
-    card.innerHTML =
-      '<div class="order-badge">'+orderLabel+'</div>'+
-      '<div class="card-body">'+
-        '<div class="card-top"><span class="container-id">#'+p.id+'</span>'+
-        (p.timeFromPrev!==null && p.timeFromPrev!==undefined ? '<span class="dist-tag">+'+fmtMin(p.timeFromPrev)+'</span>' : '')+
-        '</div>'+
-        '<div class="addr">'+p.endereco+'</div>'+
-        '<div class="badges">'+
-          '<span class="badge">'+p.setor+'</span>'+
-          '<span class="badge freq">'+p.frequencia+'</span>'+
-          (isManual ? '<span class="badge manual">Ajustado</span>' : '')+
-          (isSuspect ? '<span class="badge suspect">Verificar local</span>' : '')+
-        '</div>'+
-        '<div class="card-actions">'+
-          '<label class="check-row"><input type="checkbox" data-flag="limpeza" data-flagid="'+p.id+'" '+((flags[p.id]&&flags[p.id].limpeza)?'checked':'')+'> Limpeza</label>'+
-          '<label class="check-row"><input type="checkbox" data-flag="adesivos" data-flagid="'+p.id+'" '+((flags[p.id]&&flags[p.id].adesivos)?'checked':'')+'> Adesivos</label>'+
-          photoHtml+
-          '<button class="btn small" data-editpin="'+p.id+'">Ajustar pino</button>'+
-          '<a class="nav-link gmaps" href="'+gmapsUrl(p)+'" target="_blank" rel="noopener">Maps</a>'+
-          '<a class="nav-link waze" href="'+wazeUrl(p)+'" target="_blank" rel="noopener">Waze</a>'+
-          '<button class="btn small danger" data-deletepev="'+p.id+'">Excluir</button>'+
-          '<div class="status-group">'+
-            '<button class="status-btn'+(vs==='fechado'?' active-fechado':'')+'" data-setstatus="fechado" data-id="'+p.id+'">Fechado</button>'+
-            '<button class="status-btn'+(vs==='nao_encontrado'?' active-nao_encontrado':'')+'" data-setstatus="nao_encontrado" data-id="'+p.id+'">Não achei</button>'+
-            '<button class="status-btn'+(vs==='visitado'?' active-visitado':'')+'" data-setstatus="visitado" data-id="'+p.id+'">Visitei</button>'+
+      let photoHtml = '<button class="btn small" data-photo="'+p.id+'">Tirar foto</button><button class="btn small" data-photogallery="'+p.id+'">Galeria</button>';
+      const ph = photoCache[p.id];
+      if(ph){ photoHtml = '<img class="thumb" src="'+ph+'" data-viewphoto="'+p.id+'"><button class="btn small" data-photo="'+p.id+'">Refazer</button><button class="btn small" data-photogallery="'+p.id+'">Galeria</button>'; }
+
+      card.innerHTML =
+        '<div class="order-badge">'+orderLabel+'</div>'+
+        '<div class="card-body">'+
+          '<div class="card-top"><span class="container-id">#'+p.id+'</span>'+
+          (p.timeFromPrev!==null && p.timeFromPrev!==undefined ? '<span class="dist-tag">+'+fmtMin(p.timeFromPrev)+'</span>' : '')+
           '</div>'+
-        '</div>'+
-      '</div>';
-    container.appendChild(card);
+          '<div class="addr">'+p.endereco+'</div>'+
+          '<div class="badges">'+
+            '<span class="badge">'+p.setor+'</span>'+
+            '<span class="badge freq">'+p.frequencia+'</span>'+
+            (isManual ? '<span class="badge manual">Ajustado</span>' : '')+
+            (isSuspect ? '<span class="badge suspect">Verificar local</span>' : '')+
+          '</div>'+
+          '<div class="card-actions">'+
+            '<label class="check-row"><input type="checkbox" data-flag="limpeza" data-flagid="'+p.id+'" '+((flags[p.id]&&flags[p.id].limpeza)?'checked':'')+'> Limpeza</label>'+
+            '<label class="check-row"><input type="checkbox" data-flag="adesivos" data-flagid="'+p.id+'" '+((flags[p.id]&&flags[p.id].adesivos)?'checked':'')+'> Adesivos</label>'+
+            photoHtml+
+            '<button class="btn small" data-editpin="'+p.id+'">Ajustar pino</button>'+
+            '<a class="nav-link gmaps" href="'+gmapsUrl(p)+'" target="_blank" rel="noopener">Maps</a>'+
+            '<a class="nav-link waze" href="'+wazeUrl(p)+'" target="_blank" rel="noopener">Waze</a>'+
+            '<button class="btn small danger" data-deletepev="'+p.id+'">Excluir</button>'+
+            '<div class="status-group">'+
+              '<button class="status-btn'+(vs==='fechado'?' active-fechado':'')+'" data-setstatus="fechado" data-id="'+p.id+'">Fechado</button>'+
+              '<button class="status-btn'+(vs==='nao_encontrado'?' active-nao_encontrado':'')+'" data-setstatus="nao_encontrado" data-id="'+p.id+'">Não achei</button>'+
+              '<button class="status-btn'+(vs==='visitado'?' active-visitado':'')+'" data-setstatus="visitado" data-id="'+p.id+'">Visitei</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      container.appendChild(card);
+    }catch(err){
+      console.error('Erro ao desenhar card do PEV', p && p.id, err);
+      const errCard = document.createElement('div');
+      errCard.className = 'card';
+      errCard.style.borderColor = 'var(--red)';
+      errCard.innerHTML = '<div class="card-body"><p style="color:var(--red);font-size:13px;margin:0;">'+
+        'Não consegui exibir o ponto #'+(p&&p.id)+' (dado corrompido). '+
+        '<button class="btn small danger" data-deletepev="'+(p&&p.id)+'" style="margin-top:6px;">Excluir este ponto</button></p></div>';
+      container.appendChild(errCard);
+    }
   }
   updateStats();
 }
@@ -914,14 +936,18 @@ function renderMap(){
   }
 
   PEVS.forEach(p => {
-    const c = getActiveCoord(p.id);
-    if(!c) return;
-    const isDone = !!visited[p.id];
-    const idx = routeOrder.findIndex(r=>r.id===p.id);
-    const label = isDone ? '✓' : (idx>=0 ? (idx+1) : '');
-    const icon = L.divIcon({className:'', html:'<div class="pin '+(isDone?'done':'pending')+'"><span>'+label+'</span></div>', iconSize:[26,26]});
-    L.marker(c, {icon: icon}).addTo(mapLayer).on('click', () => openPinModal(p.id));
-    bounds.push(c);
+    try{
+      const c = getActiveCoord(p.id);
+      if(!c) return;
+      const isDone = !!visited[p.id];
+      const idx = routeOrder.findIndex(r=>r.id===p.id);
+      const label = isDone ? '✓' : (idx>=0 ? (idx+1) : '');
+      const icon = L.divIcon({className:'', html:'<div class="pin '+(isDone?'done':'pending')+'"><span>'+label+'</span></div>', iconSize:[26,26]});
+      L.marker(c, {icon: icon}).addTo(mapLayer).on('click', () => openPinModal(p.id));
+      bounds.push(c);
+    }catch(err){
+      console.error('Erro ao desenhar marcador do PEV', p.id, err);
+    }
   });
 
   const routeCoords = routeOrder.filter(p => getActiveCoord(p.id)).map(p => getActiveCoord(p.id));
@@ -938,9 +964,25 @@ function renderMap(){
 }
 
 async function refreshAll(useRealTime){
-  await computeRoute(!!useRealTime);
-  renderList();
-  if(!document.getElementById('view-map').classList.contains('hidden')) renderMap();
+  try{
+    await computeRoute(!!useRealTime);
+  }catch(err){
+    console.error('Erro ao calcular rota, usando lista sem otimização', err);
+    routeOrder = PEVS.filter(p => !visited[p.id]).map(p => ({...p, distFromPrev:null, timeFromPrev:null}));
+    routeUsesRealTime = false;
+    showBanner('warn', 'Não consegui calcular a rota otimizada agora — mostrando a lista sem ordenar. Tente "Recalcular rota" de novo.');
+  }
+  try{
+    renderList();
+  }catch(err){
+    console.error('Erro ao desenhar a lista', err);
+    document.getElementById('list-container').innerHTML = '';
+    updateStats();
+    showBanner('warn', 'Ocorreu um erro ao desenhar a lista. Seus dados estão salvos — tente recarregar a página.');
+  }
+  if(!document.getElementById('view-map').classList.contains('hidden')){
+    try{ renderMap(); }catch(err){ console.error('Erro ao desenhar o mapa', err); }
+  }
 }
 
 // Desenha uma faixa com endereço, data/hora e coordenadas GPS na foto,
@@ -1025,9 +1067,12 @@ function openPinModal(id){
     '</div></div>';
 
   setTimeout(() => {
+    if(editMap){ try{ editMap.remove(); }catch(e){} editMap = null; }
     editMap = L.map('edit-map-container').setView(initialCoord, 16);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(editMap);
     editMarker = L.marker(initialCoord, { draggable: true }).addTo(editMap);
+    // corrige projeção caso o modal ainda estivesse com tamanho 0 no instante da criação
+    setTimeout(() => { if(editMap) editMap.invalidateSize(); }, 150);
   }, 100);
 }
 
@@ -1199,6 +1244,10 @@ document.addEventListener('click', async (e) => {
     const id = e.target.dataset.id;
     if(editMarker){
       const pos = editMarker.getLatLng();
+      if(!isFinite(pos.lat) || !isFinite(pos.lng)){
+        showBanner('warn', 'Não consegui capturar uma posição válida do mapa. Tente arrastar o pino de novo antes de salvar.');
+        return;
+      }
       manualCoords[id] = [pos.lat, pos.lng];
       await saveManualCoords();
       document.getElementById('modal-slot').innerHTML = '';
