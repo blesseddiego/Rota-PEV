@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Rota PEV - v3.0</title>
+<title>Rota PEV - v5.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -126,7 +126,7 @@ button{font-family:var(--font-body);cursor:pointer;}
   <p id="geo-status">Buscando coordenadas exatas para montar o mapa e calcular a rota...</p>
   <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
   <div class="progress-label" id="geo-count">0 / 0</div>
-  <div class="version-tag">Versão 3.0</div>
+  <div class="version-tag">Versão 5.0 · offline + log de erros</div>
   <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
 </div>
 
@@ -140,7 +140,7 @@ button{font-family:var(--font-body);cursor:pointer;}
 
 <div class="topbar">
   <div class="topbar-row">
-    <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span></div>
+    <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span><span class="count" style="opacity:.6;">v5.0</span></div>
     <div style="display:flex;gap:6px;align-items:center;">
       <span id="save-indicator" title="Dados salvos" style="font-size:14px;">🟢</span>
       <button class="btn small ghost" id="upload-btn">Nova planilha</button>
@@ -181,7 +181,10 @@ button{font-family:var(--font-body);cursor:pointer;}
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;">
     <span id="auto-backup-info" style="font-size:11px;color:var(--ink-faint);font-family:var(--font-mono);">Backups automáticos guardados: 0/3</span>
-    <button class="btn small ghost" id="view-auto-backups-btn" style="padding:4px 8px;font-size:11px;">Ver backups</button>
+    <div style="display:flex;gap:6px;">
+      <button class="btn small ghost" id="export-errorlog-btn" style="padding:4px 8px;font-size:11px;">Log de erros</button>
+      <button class="btn small ghost" id="view-auto-backups-btn" style="padding:4px 8px;font-size:11px;">Ver backups</button>
+    </div>
   </div>
 </div>
 
@@ -282,6 +285,7 @@ async function persist(store, key, value){
   }catch(e){
     console.error('Falha ao salvar', store, key, e);
     setSaveStatus('error');
+    logError('persist:'+store+':'+key, e);
     return false;
   }
 }
@@ -327,8 +331,33 @@ async function migrateFromLocalStorageIfNeeded(){
     }
   }catch(e){
     console.error('Migração para IndexedDB falhou, será tentada novamente na próxima abertura', e);
+    logError('migration', e);
     // não marca como concluído — os dados antigos continuam intactos no localStorage
   }
+}
+
+// ============================================================
+// LOG DE ERROS — captura silenciosa pra diagnóstico remoto
+// Guarda os últimos 50 erros localmente; exportável por botão, sem precisar de backup completo.
+// ============================================================
+let errorLog = [];
+const ERROR_LOG_MAX = 50;
+async function logError(context, err){
+  try{
+    const entry = {
+      ts: Date.now(),
+      context: context,
+      message: (err && err.message) ? err.message : String(err),
+      stack: (err && err.stack) ? String(err.stack).slice(0, 500) : null
+    };
+    console.error('[' + context + ']', err);
+    errorLog.push(entry);
+    if(errorLog.length > ERROR_LOG_MAX) errorLog = errorLog.slice(-ERROR_LOG_MAX);
+    await idbSet('kv', 'error-log-v1', errorLog);
+  }catch(e){ /* nunca deixa o log de erro causar outro erro */ }
+}
+async function loadErrorLog(){
+  try{ const r = await idbGet('kv', 'error-log-v1'); errorLog = r || []; }catch(e){ errorLog = []; }
 }
 
 const PEVS_DEFAULT = [];
@@ -676,6 +705,7 @@ async function createAutoBackup(reason, scope){
     return record;
   }catch(e){
     console.error('Falha ao criar backup automático', e);
+    logError('createAutoBackup', e);
     return null;
   }
 }
@@ -905,6 +935,7 @@ function renderList(){
       container.appendChild(card);
     }catch(err){
       console.error('Erro ao desenhar card do PEV', p && p.id, err);
+      logError('renderList:card:'+(p&&p.id), err);
       const errCard = document.createElement('div');
       errCard.className = 'card';
       errCard.style.borderColor = 'var(--red)';
@@ -947,6 +978,7 @@ function renderMap(){
       bounds.push(c);
     }catch(err){
       console.error('Erro ao desenhar marcador do PEV', p.id, err);
+      logError('renderMap:marker:'+p.id, err);
     }
   });
 
@@ -968,6 +1000,7 @@ async function refreshAll(useRealTime){
     await computeRoute(!!useRealTime);
   }catch(err){
     console.error('Erro ao calcular rota, usando lista sem otimização', err);
+    await logError('computeRoute', err);
     routeOrder = PEVS.filter(p => !visited[p.id]).map(p => ({...p, distFromPrev:null, timeFromPrev:null}));
     routeUsesRealTime = false;
     showBanner('warn', 'Não consegui calcular a rota otimizada agora — mostrando a lista sem ordenar. Tente "Recalcular rota" de novo.');
@@ -976,12 +1009,13 @@ async function refreshAll(useRealTime){
     renderList();
   }catch(err){
     console.error('Erro ao desenhar a lista', err);
+    await logError('renderList', err);
     document.getElementById('list-container').innerHTML = '';
     updateStats();
     showBanner('warn', 'Ocorreu um erro ao desenhar a lista. Seus dados estão salvos — tente recarregar a página.');
   }
   if(!document.getElementById('view-map').classList.contains('hidden')){
-    try{ renderMap(); }catch(err){ console.error('Erro ao desenhar o mapa', err); }
+    try{ renderMap(); }catch(err){ console.error('Erro ao desenhar o mapa', err); logError('renderMap', err); }
   }
 }
 
@@ -1429,6 +1463,23 @@ document.addEventListener('click', async (e) => {
     await openAutoBackupsModal();
     return;
   }
+  if(e.target.id === 'export-errorlog-btn'){
+    if(!errorLog.length){
+      showBanner('info', 'Nenhum erro registrado até agora — tudo funcionando limpo.');
+      return;
+    }
+    const readable = errorLog.map(e => new Date(e.ts).toLocaleString('pt-BR') + ' | ' + e.context + ' | ' + e.message + (e.stack ? ('\n  ' + e.stack.replace(/\n/g,'\n  ')) : '')).join('\n\n');
+    const blob = new Blob([readable], {type:'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    a.download = 'log_erros_rota_pev_' + now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'_'+pad(now.getHours())+'-'+pad(now.getMinutes()) + '.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
   if(e.target.id === 'close-auto-backups-modal' || e.target.id === 'auto-backups-modal-bg'){
     document.getElementById('modal-slot').innerHTML = '';
     return;
@@ -1508,6 +1559,18 @@ document.addEventListener('change', async (e) => {
   }
 });
 
+window.addEventListener('error', (e) => {
+  logError('window.onerror', e.error || e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  logError('unhandledrejection', e.reason);
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => { logError('sw-register', err); });
+  });
+}
+
 async function init(){
   document.getElementById('month-label').textContent = new Date().toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
   setSaveStatus('saving');
@@ -1522,9 +1585,11 @@ async function init(){
     await loadPinnedOrder();
     await loadFlags();
     await loadVisitStatus();
+    await loadErrorLog();
     setSaveStatus('saved');
   }catch(e){
     console.error('Erro ao carregar dados salvos', e);
+    await logError('init', e);
     setSaveStatus('error');
     showBanner('warn', 'Não foi possível acessar o armazenamento local do navegador. Os dados desta sessão podem não ser salvos.');
   }
