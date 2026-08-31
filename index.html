@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Rota PEV - v5.0</title>
+<title>Rota PEV - v5.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -126,7 +126,7 @@ button{font-family:var(--font-body);cursor:pointer;}
   <p id="geo-status">Buscando coordenadas exatas para montar o mapa e calcular a rota...</p>
   <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
   <div class="progress-label" id="geo-count">0 / 0</div>
-  <div class="version-tag">Versão 5.0 · offline + log de erros</div>
+  <div class="version-tag">Versão 5.1 · offline + log de erros</div>
   <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
 </div>
 
@@ -140,7 +140,7 @@ button{font-family:var(--font-body);cursor:pointer;}
 
 <div class="topbar">
   <div class="topbar-row">
-    <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span><span class="count" style="opacity:.6;">v5.0</span></div>
+    <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span><span class="count" style="opacity:.6;">v5.1</span></div>
     <div style="display:flex;gap:6px;align-items:center;">
       <span id="save-indicator" title="Dados salvos" style="font-size:14px;">🟢</span>
       <button class="btn small ghost" id="upload-btn">Nova planilha</button>
@@ -1566,6 +1566,15 @@ window.addEventListener('unhandledrejection', (e) => {
   logError('unhandledrejection', e.reason);
 });
 if('serviceWorker' in navigator){
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // Recarrega automaticamente na primeira vez que o novo Service Worker assume
+    // o controle da página — evita a necessidade de atualização manual que
+    // acontece na primeira instalação do modo offline em cada aparelho.
+    if(swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(err => { logError('sw-register', err); });
   });
