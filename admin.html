@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Rota PEV - Administração</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#F6F4EC; --surface:#FFFFFF; --border:#DED8C4; --border-strong:#C7BFA3;
+  --ink:#182B20; --ink-soft:#586254; --ink-faint:#8A9182;
+  --green:#2F6B4F; --green-dark:#1F4C37; --green-light:#E4EFE6;
+  --amber:#B8641E; --amber-light:#F8E9D6;
+  --red:#B23A2E; --red-light:#F7E4E1;
+  --blue:#2A5C8A;
+  --radius:12px;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);}
+body{padding-bottom:40px;}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;margin:0;}
+button{font-family:var(--font-body);cursor:pointer;}
+.hidden{display:none !important;}
+input,select{font-family:var(--font-body);}
+
+.topbar{position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid var(--border);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;}
+.topbar h1{font-size:20px;}
+.topbar .sub{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);}
+
+.btn{border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--surface);padding:10px 16px;font-size:13px;font-weight:500;color:var(--ink);}
+.btn.primary{background:var(--green);border-color:var(--green);color:#fff;}
+.btn.danger{color:var(--red);border-color:var(--red-light);}
+.btn.small{padding:6px 10px;font-size:12px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+
+.wrap{max-width:920px;margin:0 auto;padding:20px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;}
+.card h2{font-size:16px;margin-bottom:10px;}
+.card p.help{font-size:13px;color:var(--ink-soft);line-height:1.5;margin:0 0 12px;}
+
+.login-box{max-width:360px;margin:80px auto;padding:24px;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:4px;}
+.field input{width:100%;border-radius:var(--radius);border:1px solid var(--border-strong);padding:10px;font-size:14px;}
+
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px;}
+.stat-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
+.stat-box .n{font-family:var(--font-display);font-size:22px;font-weight:700;}
+.stat-box .l{font-size:11px;color:var(--ink-soft);text-transform:uppercase;}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:8px;border-bottom:2px solid var(--border);font-size:11px;text-transform:uppercase;color:var(--ink-soft);}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
+tr:hover td{background:var(--green-light);}
+.badge{font-size:10px;padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green-dark);font-weight:600;}
+.badge.fechado{background:var(--amber-light);color:#6b3f0f;}
+.badge.nao{background:var(--red-light);color:var(--red);}
+.badge.pend{background:#EEE;color:var(--ink-soft);}
+
+.banner{padding:10px 14px;border-radius:var(--radius);font-size:13px;margin-bottom:14px;}
+.banner.warn{background:var(--amber-light);color:#5c380f;border:1px solid #EAC492;}
+.banner.info{background:var(--green-light);color:var(--green-dark);border:1px solid #BFDCC9;}
+.banner.error{background:var(--red-light);color:var(--red);border:1px solid #E9B4AC;}
+
+.modal-bg{position:fixed;inset:0;background:rgba(24,43,32,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal{background:var(--surface);border-radius:16px;padding:20px;max-width:420px;width:100%;max-height:85vh;overflow-y:auto;}
+.modal h3{font-size:16px;margin-bottom:10px;}
+
+.progress-track{width:100%;height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:8px;}
+.progress-fill{height:100%;background:var(--green);width:0%;transition:width .2s;}
+
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+.tab-btn{padding:8px 14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:500;color:var(--ink-soft);}
+.tab-btn.active{background:var(--green);border-color:var(--green);color:#fff;}
+.view{display:none;}
+.view.active{display:block;}
+select.filter-select{border-radius:var(--radius);border:1px solid var(--border-strong);padding:8px 10px;font-size:13px;margin-bottom:10px;}
+</style>
+</head>
+<body>
+
+<div id="login-view">
+  <div class="card login-box">
+    <h1 style="margin-bottom:6px;">Rota PEV</h1>
+    <p class="sub" style="margin-bottom:20px;">Painel do administrador</p>
+    <div id="login-banner-slot"></div>
+    <div class="field"><label>E-mail</label><input type="email" id="login-email" autocomplete="username"></div>
+    <div class="field"><label>Senha</label><input type="password" id="login-password" autocomplete="current-password"></div>
+    <div class="field"><label>Código da equipe</label><input type="text" id="login-teamcode" placeholder="Ex: pev-noroeste-2026"></div>
+    <button class="btn primary" id="login-btn" style="width:100%;">Entrar</button>
+  </div>
+</div>
+
+<div id="admin-view" class="hidden">
+  <div class="topbar">
+    <div><h1>Rota PEV · Admin</h1><div class="sub" id="admin-whoami"></div></div>
+    <button class="btn small" id="logout-btn">Sair</button>
+  </div>
+  <div class="wrap">
+    <div id="banner-slot"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-view="tab-overview">Visão geral</button>
+      <button class="tab-btn" data-view="tab-pevs">Endereços</button>
+      <button class="tab-btn" data-view="tab-agents">Agentes</button>
+      <button class="tab-btn" data-view="tab-relatorio">Relatório</button>
+    </div>
+
+    <div id="tab-overview" class="view active">
+      <div class="stats-grid">
+        <div class="stat-box"><div class="n" id="stat-total">0</div><div class="l">total de pontos</div></div>
+        <div class="stat-box"><div class="n" id="stat-visitados">0</div><div class="l">visitados</div></div>
+        <div class="stat-box"><div class="n" id="stat-fechados">0</div><div class="l">fechados</div></div>
+        <div class="stat-box"><div class="n" id="stat-naoachou">0</div><div class="l">não encontrados</div></div>
+        <div class="stat-box"><div class="n" id="stat-semdono">0</div><div class="l">sem responsável</div></div>
+      </div>
+      <div class="card">
+        <h2>Progresso por agente</h2>
+        <div id="agent-progress-table"></div>
+      </div>
+    </div>
+
+    <div id="tab-pevs" class="view">
+      <div class="card">
+        <h2>Carregar planilha mestre</h2>
+        <p class="help">Substitui a lista completa de endereços. Precisa ter as colunas de sempre (N° Container, Endereço, Setor Seletiva, Frequência vidro, OBS) + uma coluna com o e-mail do responsável (ex: "E-mail responsável" ou "Responsável").</p>
+        <input type="file" id="master-xlsx-input" accept=".xlsx,.xls,.csv">
+        <div id="upload-progress-wrap" class="hidden">
+          <div class="progress-track"><div class="progress-fill" id="upload-progress"></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h2 style="margin:0;">Endereços (<span id="pev-count">0</span>)</h2>
+          <button class="btn small primary" id="add-pev-btn">+ Adicionar</button>
+        </div>
+        <select class="filter-select" id="pev-agent-filter"><option value="">Todos os agentes</option></select>
+        <input type="text" id="pev-search-input" class="filter-select" placeholder="Buscar por container ou endereço..." style="width:100%;max-width:340px;margin-left:8px;">
+        <div id="filter-summary" style="font-size:12px;color:var(--ink-soft);margin:6px 0 10px;"></div>
+        <div style="overflow-x:auto;"><table id="pevs-table"><thead><tr>
+          <th>ID</th><th>Endereço</th><th>Setor</th><th>Responsável</th><th>Status</th><th></th>
+        </tr></thead><tbody id="pevs-tbody"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="tab-agents" class="view">
+      <div class="card">
+        <h2>Criar novo agente</h2>
+        <p class="help">Cria a conta de login (e-mail + senha) e já vincula o papel de agente — sem tirar você do seu próprio login.</p>
+        <div class="field"><label>Nome</label><input type="text" id="new-agent-name"></div>
+        <div class="field"><label>E-mail</label><input type="email" id="new-agent-email"></div>
+        <div class="field"><label>Senha provisória</label><input type="text" id="new-agent-password" placeholder="Mínimo 6 caracteres"></div>
+        <button class="btn primary" id="create-agent-btn">Criar agente</button>
+      </div>
+      <div class="card">
+        <h2>Agentes cadastrados</h2>
+        <div style="overflow-x:auto;"><table id="agents-table"><thead><tr>
+          <th>Nome</th><th>E-mail</th><th>Papel</th>
+        </tr></thead><tbody id="agents-tbody"></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="tab-relatorio" class="view">
+      <div class="card">
+        <h2>Exportar relatório consolidado</h2>
+        <p class="help">Planilha com os endereços, responsável e status de todo mundo — mesma estrutura da planilha original, com o OBS já preenchido. Usa o mesmo filtro (agente/busca) que você configurou na aba "Endereços".</p>
+        <p class="help" id="export-filter-summary" style="font-weight:600;"></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn primary" id="export-report-filtered-btn">Baixar relatório (filtrado)</button>
+          <button class="btn" id="export-report-all-btn">Baixar relatório (tudo)</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Fotos</h2>
+        <p class="help">Baixa um .zip com as fotos que a equipe já enviou pra nuvem. Também respeita o filtro da aba "Endereços" — útil pra pegar só as fotos de um agente ou de uma busca específica.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn primary" id="download-photos-filtered-btn">Baixar fotos (filtrado)</button>
+          <button class="btn" id="download-photos-all-btn">Baixar fotos (tudo)</button>
+        </div>
+        <div id="photos-progress-wrap" class="hidden">
+          <div class="progress-track"><div class="progress-fill" id="photos-progress"></div></div>
+          <p class="help" id="photos-progress-label" style="margin-top:6px;"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-slot"></div>
+
+<script type="module">
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import {
+  getFirestore, doc, setDoc, deleteDoc, getDoc, getDocs, collection, serverTimestamp, writeBatch
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+  createUserWithEmailAndPassword, signOut as secondarySignOut
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import {
+  getStorage, ref, listAll, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDP9UI_1PVj4TMZkOVW8tU0yR1Kxucut_s",
+  authDomain: "rota-pev.firebaseapp.com",
+  projectId: "rota-pev",
+  storageBucket: "rota-pev.firebasestorage.app",
+  messagingSenderId: "422038617076",
+  appId: "1:422038617076:web:432e90e7231d25fce7d7a1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const storage = getStorage(app);
+
+let currentUser = null;
+let teamCode = localStorage.getItem('admin-team-code') || '';
+let pevsCache = [];
+let statusCache = {};
+let agentsCache = [];
+
+function showBanner(slotId, type, text){
+  document.getElementById(slotId).innerHTML = '<div class="banner ' + type + '">' + text + '</div>';
+}
+function normalizeHeader(h){
+  return String(h).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+
+// ---------- LOGIN ----------
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const code = document.getElementById('login-teamcode').value.trim();
+  if(!email || !password || !code){
+    showBanner('login-banner-slot', 'warn', 'Preencha e-mail, senha e código da equipe.');
+    return;
+  }
+  try{
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    teamCode = code;
+    localStorage.setItem('admin-team-code', code);
+    const roleDoc = await getDoc(doc(db, 'teams', teamCode, 'users', cred.user.uid));
+    if(!roleDoc.exists() || roleDoc.data().role !== 'admin'){
+      showBanner('login-banner-slot', 'error', 'Esta conta não tem permissão de administrador para essa equipe.');
+      await signOut(auth);
+      return;
+    }
+    currentUser = cred.user;
+  }catch(err){
+    showBanner('login-banner-slot', 'error', 'Não foi possível entrar: ' + (err.message || err));
+  }
+});
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  await signOut(auth);
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if(user && teamCode){
+    const roleDoc = await getDoc(doc(db, 'teams', teamCode, 'users', user.uid)).catch(() => null);
+    if(roleDoc && roleDoc.exists() && roleDoc.data().role === 'admin'){
+      currentUser = user;
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('admin-view').classList.remove('hidden');
+      document.getElementById('admin-whoami').textContent = user.email + ' · equipe ' + teamCode;
+      await loadEverything();
+      return;
+    }
+  }
+  document.getElementById('login-view').classList.remove('hidden');
+  document.getElementById('admin-view').classList.add('hidden');
+});
+
+// ---------- TABS ----------
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.view).classList.add('active');
+  });
+});
+
+// ---------- CARREGAR DADOS ----------
+async function loadEverything(){
+  try{
+    const [pevsSnap, statusSnap, usersSnap] = await Promise.all([
+      getDocs(collection(db, 'teams', teamCode, 'pevs')),
+      getDocs(collection(db, 'teams', teamCode, 'pevStatus')),
+      getDocs(collection(db, 'teams', teamCode, 'users'))
+    ]);
+    pevsCache = []; pevsSnap.forEach(d => pevsCache.push({id: d.id, ...d.data()}));
+    statusCache = {}; statusSnap.forEach(d => statusCache[d.id] = d.data());
+    agentsCache = []; usersSnap.forEach(d => agentsCache.push({uid: d.id, ...d.data()}));
+    renderOverview();
+    renderPevsTable();
+    renderAgentsTable();
+    renderAgentFilter();
+  }catch(err){
+    showBanner('banner-slot', 'error', 'Erro ao carregar dados: ' + (err.message || err));
+  }
+}
+
+function renderOverview(){
+  const total = pevsCache.length;
+  let visitados=0, fechados=0, naoachou=0, semdono=0;
+  pevsCache.forEach(p => {
+    const st = statusCache[p.id];
+    if(st){
+      if(st.visitStatus === 'fechado') fechados++;
+      else if(st.visitStatus === 'nao_encontrado') naoachou++;
+      else if(st.visited) visitados++;
+    }
+    if(!p.assignedTo) semdono++;
+  });
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-visitados').textContent = visitados;
+  document.getElementById('stat-fechados').textContent = fechados;
+  document.getElementById('stat-naoachou').textContent = naoachou;
+  document.getElementById('stat-semdono').textContent = semdono;
+
+  const byAgent = {};
+  pevsCache.forEach(p => {
+    const owner = p.assignedTo || '(sem responsável)';
+    if(!byAgent[owner]) byAgent[owner] = {total:0, done:0};
+    byAgent[owner].total++;
+    const st = statusCache[p.id];
+    if(st && (st.visited || st.visitStatus)) byAgent[owner].done++;
+  });
+  let html = '<table><thead><tr><th>Agente</th><th>Concluído</th><th>Total</th><th>%</th></tr></thead><tbody>';
+  Object.keys(byAgent).sort().forEach(owner => {
+    const d = byAgent[owner];
+    const pct = d.total ? Math.round(d.done/d.total*100) : 0;
+    html += '<tr><td>'+owner+'</td><td>'+d.done+'</td><td>'+d.total+'</td><td>'+pct+'%</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('agent-progress-table').innerHTML = html;
+}
+
+function statusBadge(pevId){
+  const st = statusCache[pevId];
+  if(!st) return '<span class="badge pend">pendente</span>';
+  if(st.visitStatus === 'fechado') return '<span class="badge fechado">fechado</span>';
+  if(st.visitStatus === 'nao_encontrado') return '<span class="badge nao">não achado</span>';
+  if(st.visited) return '<span class="badge">visitado</span>';
+  return '<span class="badge pend">pendente</span>';
+}
+
+// Filtro central — usado pela tabela E pelas duas exportações (relatório e fotos),
+// assim "o que eu vejo" e "o que eu baixo" são sempre a mesma coisa.
+function getActiveFilter(){
+  return {
+    agent: document.getElementById('pev-agent-filter').value,
+    search: document.getElementById('pev-search-input').value.trim().toLowerCase()
+  };
+}
+function getFilteredPevs(){
+  const f = getActiveFilter();
+  return pevsCache.filter(p => {
+    if(f.agent && p.assignedTo !== f.agent) return false;
+    if(f.search){
+      const hay = (p.id + ' ' + p.endereco).toLowerCase();
+      if(!hay.includes(f.search)) return false;
+    }
+    return true;
+  });
+}
+function updateFilterSummary(){
+  const f = getActiveFilter();
+  const filtered = getFilteredPevs();
+  const active = f.agent || f.search;
+  const el = document.getElementById('filter-summary');
+  if(el){
+    el.textContent = active
+      ? ('Filtro ativo: ' + filtered.length + ' de ' + pevsCache.length + ' pontos.')
+      : ('Mostrando todos os ' + pevsCache.length + ' pontos.');
+  }
+  const expEl = document.getElementById('export-filter-summary');
+  if(expEl){
+    expEl.textContent = active
+      ? ('Filtro da aba Endereços está ativo: ' + filtered.length + ' de ' + pevsCache.length + ' pontos serão exportados no botão "filtrado".')
+      : ('Nenhum filtro ativo na aba Endereços — os dois botões exportam tudo (' + pevsCache.length + ' pontos).');
+  }
+}
+
+function renderPevsTable(){
+  document.getElementById('pev-count').textContent = pevsCache.length;
+  const tbody = document.getElementById('pevs-tbody');
+  tbody.innerHTML = '';
+  getFilteredPevs().forEach(p => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td style="font-family:var(--font-mono);font-size:11px;">'+p.id+'</td>'+
+        '<td>'+(p.endereco||'')+'</td>'+
+        '<td>'+(p.setor||'')+'</td>'+
+        '<td>'+(p.assignedTo||'<em style="color:var(--red);">sem responsável</em>')+'</td>'+
+        '<td>'+statusBadge(p.id)+'</td>'+
+        '<td><button class="btn small danger" data-delpev="'+p.id+'">Excluir</button></td>';
+      tbody.appendChild(tr);
+    });
+  updateFilterSummary();
+}
+
+function renderAgentFilter(){
+  const sel = document.getElementById('pev-agent-filter');
+  const emails = [...new Set(pevsCache.map(p => p.assignedTo).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Todos os agentes</option>' + emails.map(e => '<option value="'+e+'">'+e+'</option>').join('');
+}
+document.getElementById('pev-agent-filter').addEventListener('change', renderPevsTable);
+document.getElementById('pev-search-input').addEventListener('input', renderPevsTable);
+
+
+function renderAgentsTable(){
+  const tbody = document.getElementById('agents-tbody');
+  tbody.innerHTML = agentsCache.map(a =>
+    '<tr><td>'+(a.name||'')+'</td><td>'+(a.email||'')+'</td><td>'+(a.role||'')+'</td></tr>'
+  ).join('');
+}
+
+// ---------- HISTÓRICO ----------
+async function logHistory(pevId, action, details){
+  try{
+    const id = 'h_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    await setDoc(doc(db, 'teams', teamCode, 'history', id), {
+      pevId, action, details, changedBy: currentUser.email, changedAt: serverTimestamp()
+    });
+  }catch(err){ console.error('Falha ao registrar histórico', err); }
+}
+
+// ---------- UPLOAD PLANILHA MESTRE ----------
+document.getElementById('master-xlsx-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    if(!rows.length){ showBanner('banner-slot','warn','Planilha vazia.'); return; }
+
+    const sampleKeys = Object.keys(rows[0]);
+    const keyMap = {};
+    sampleKeys.forEach(k => {
+      const n = normalizeHeader(k);
+      if(n.includes('container')) keyMap.id = k;
+      else if(n.includes('endere')) keyMap.endereco = k;
+      else if(n.includes('setor')) keyMap.setor = k;
+      else if(n.includes('frequ')) keyMap.frequencia = k;
+      else if(n.includes('obs')) keyMap.obs = k;
+      else if(n.includes('mail') || n.includes('responsavel')) keyMap.assignedTo = k;
+    });
+    if(!keyMap.endereco){
+      showBanner('banner-slot','warn','Não encontrei uma coluna de endereço na planilha.');
+      return;
+    }
+
+    const parsed = rows.map(r => ({
+      id: String(keyMap.id ? r[keyMap.id] : '').trim(),
+      endereco: String(keyMap.endereco ? r[keyMap.endereco] : '').trim(),
+      setor: String(keyMap.setor ? r[keyMap.setor] : '').trim(),
+      frequencia: String(keyMap.frequencia ? r[keyMap.frequencia] : '').trim(),
+      obs: String(keyMap.obs ? r[keyMap.obs] : '').trim(),
+      assignedTo: String(keyMap.assignedTo ? r[keyMap.assignedTo] : '').trim().toLowerCase()
+    })).filter(p => p.endereco && p.id);
+
+    if(!confirm('Encontrei ' + parsed.length + ' pontos. Isso substitui a lista completa de endereços da equipe. Continuar?')){
+      e.target.value = '';
+      return;
+    }
+
+    const progWrap = document.getElementById('upload-progress-wrap');
+    const progBar = document.getElementById('upload-progress');
+    progWrap.classList.remove('hidden');
+
+    // apaga os antigos, escreve os novos, em lotes de 400 (limite de batch do Firestore é 500)
+    const oldSnap = await getDocs(collection(db, 'teams', teamCode, 'pevs'));
+    const oldIds = []; oldSnap.forEach(d => oldIds.push(d.id));
+
+    const BATCH_SIZE = 400;
+    let done = 0;
+    const totalOps = oldIds.length + parsed.length;
+
+    for(let i=0; i<oldIds.length; i+=BATCH_SIZE){
+      const batch = writeBatch(db);
+      oldIds.slice(i, i+BATCH_SIZE).forEach(id => batch.delete(doc(db,'teams',teamCode,'pevs',id)));
+      await batch.commit();
+      done += Math.min(BATCH_SIZE, oldIds.length - i);
+      progBar.style.width = Math.round(done/totalOps*100) + '%';
+    }
+    for(let i=0; i<parsed.length; i+=BATCH_SIZE){
+      const batch = writeBatch(db);
+      parsed.slice(i, i+BATCH_SIZE).forEach(p => {
+        batch.set(doc(db,'teams',teamCode,'pevs',p.id), {...p, updatedAt: serverTimestamp()});
+      });
+      await batch.commit();
+      done += Math.min(BATCH_SIZE, parsed.length - i);
+      progBar.style.width = Math.round(done/totalOps*100) + '%';
+    }
+
+    await logHistory('(planilha)', 'upload_master', parsed.length + ' pontos carregados');
+    progWrap.classList.add('hidden');
+    e.target.value = '';
+    showBanner('banner-slot', 'info', parsed.length + ' pontos carregados com sucesso.');
+    await loadEverything();
+  }catch(err){
+    showBanner('banner-slot', 'error', 'Erro ao processar planilha: ' + (err.message || err));
+  }
+});
+
+// ---------- ADICIONAR / EXCLUIR PEV ----------
+document.getElementById('add-pev-btn').addEventListener('click', () => {
+  document.getElementById('modal-slot').innerHTML =
+    '<div class="modal-bg" id="add-pev-modal-bg"><div class="modal"><h3>Adicionar endereço</h3>'+
+    '<div class="field"><label>N° Container</label><input type="text" id="new-pev-id"></div>'+
+    '<div class="field"><label>Endereço</label><input type="text" id="new-pev-endereco"></div>'+
+    '<div class="field"><label>Setor</label><input type="text" id="new-pev-setor"></div>'+
+    '<div class="field"><label>Frequência</label><input type="text" id="new-pev-frequencia"></div>'+
+    '<div class="field"><label>E-mail do responsável</label><input type="email" id="new-pev-assignedto"></div>'+
+    '<button class="btn primary" id="confirm-add-pev-btn" style="width:100%;margin-top:6px;">Adicionar</button>'+
+    '<button class="btn" id="cancel-add-pev-btn" style="width:100%;margin-top:8px;">Cancelar</button>'+
+    '</div></div>';
+});
+
+document.addEventListener('click', async (e) => {
+  if(e.target.id === 'cancel-add-pev-btn' || e.target.id === 'add-pev-modal-bg'){
+    document.getElementById('modal-slot').innerHTML = '';
+    return;
+  }
+  if(e.target.id === 'confirm-add-pev-btn'){
+    const id = document.getElementById('new-pev-id').value.trim();
+    const endereco = document.getElementById('new-pev-endereco').value.trim();
+    if(!id || !endereco){ alert('Preencha ao menos o container e o endereço.'); return; }
+    const p = {
+      id,
+      endereco,
+      setor: document.getElementById('new-pev-setor').value.trim(),
+      frequencia: document.getElementById('new-pev-frequencia').value.trim(),
+      obs: '',
+      assignedTo: document.getElementById('new-pev-assignedto').value.trim().toLowerCase()
+    };
+    await setDoc(doc(db,'teams',teamCode,'pevs',id), {...p, updatedAt: serverTimestamp()});
+    await logHistory(id, 'add', 'Endereço adicionado manualmente');
+    document.getElementById('modal-slot').innerHTML = '';
+    showBanner('banner-slot', 'info', 'Endereço adicionado.');
+    await loadEverything();
+    return;
+  }
+  const delBtn = e.target.closest('[data-delpev]');
+  if(delBtn){
+    const id = delBtn.dataset.delpev;
+    if(!confirm('Excluir o endereço #' + id + '? Isso remove ele da lista de todos os agentes.')) return;
+    await deleteDoc(doc(db,'teams',teamCode,'pevs',id));
+    await logHistory(id, 'delete', 'Endereço excluído pelo administrador');
+    showBanner('banner-slot', 'info', 'Endereço excluído.');
+    await loadEverything();
+    return;
+  }
+});
+
+// ---------- CRIAR AGENTE (app secundário, não derruba a sessão do admin) ----------
+document.getElementById('create-agent-btn').addEventListener('click', async () => {
+  const name = document.getElementById('new-agent-name').value.trim();
+  const email = document.getElementById('new-agent-email').value.trim().toLowerCase();
+  const password = document.getElementById('new-agent-password').value;
+  if(!name || !email || !password || password.length < 6){
+    showBanner('banner-slot', 'warn', 'Preencha nome, e-mail e uma senha de pelo menos 6 caracteres.');
+    return;
+  }
+  const btn = document.getElementById('create-agent-btn');
+  btn.disabled = true; btn.textContent = 'Criando...';
+  const secondaryApp = initializeApp(firebaseConfig, 'secondary-' + Date.now());
+  const secondaryAuth = getAuth(secondaryApp);
+  try{
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const uid = cred.user.uid;
+    await secondarySignOut(secondaryAuth);
+    await deleteApp(secondaryApp);
+    await setDoc(doc(db, 'teams', teamCode, 'users', uid), {name, email, role: 'agent'});
+    await logHistory('(agente)', 'create_agent', email);
+    document.getElementById('new-agent-name').value = '';
+    document.getElementById('new-agent-email').value = '';
+    document.getElementById('new-agent-password').value = '';
+    showBanner('banner-slot', 'info', 'Agente criado — pode passar o e-mail e a senha provisória pra ele.');
+    await loadEverything();
+  }catch(err){
+    showBanner('banner-slot', 'error', 'Erro ao criar agente: ' + (err.message || err));
+    try{ await deleteApp(secondaryApp); }catch(e2){}
+  }
+  btn.disabled = false; btn.textContent = 'Criar agente';
+});
+
+// ---------- RELATÓRIO CONSOLIDADO ----------
+function exportReport(pevList){
+  const rows = pevList.map(p => {
+    const st = statusCache[p.id] || {};
+    const needsCleaning = !!(st.flags && st.flags.limpeza);
+    const needsStickers = !!(st.flags && st.flags.adesivos);
+    let obs;
+    if(st.visitStatus === 'fechado') obs = 'Local fechado';
+    else if(st.visitStatus === 'nao_encontrado') obs = 'PEV não encontrado no endereço';
+    else if(needsCleaning || needsStickers){
+      const items = [];
+      if(needsCleaning) items.push('Precisa de limpeza');
+      if(needsStickers) items.push('Precisa de adesivos');
+      obs = items.join(' / ');
+    } else if(st.visited) obs = 'PEV Ok';
+    else obs = 'Pendente';
+    return {
+      'N° Container': p.id,
+      'Endereço': p.endereco,
+      'Setor Seletiva': p.setor,
+      'Frequência vidro': p.frequencia,
+      'Responsável': p.assignedTo || '',
+      'Visitado': st.visited ? 'Sim' : 'Nao',
+      'OBS': obs
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Relatorio');
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  XLSX.writeFile(wb, 'relatorio_rota_pev_' + now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate()) + '.xlsx');
+}
+document.getElementById('export-report-filtered-btn').addEventListener('click', () => exportReport(getFilteredPevs()));
+document.getElementById('export-report-all-btn').addEventListener('click', () => exportReport(pevsCache));
+
+// ---------- BAIXAR FOTOS (Storage) ----------
+async function downloadPhotos(pevList){
+  const allowedIds = pevList ? new Set(pevList.map(p => p.id)) : null;
+  const btnFiltered = document.getElementById('download-photos-filtered-btn');
+  const btnAll = document.getElementById('download-photos-all-btn');
+  const progWrap = document.getElementById('photos-progress-wrap');
+  const progBar = document.getElementById('photos-progress');
+  const progLabel = document.getElementById('photos-progress-label');
+  btnFiltered.disabled = true; btnAll.disabled = true;
+  progWrap.classList.remove('hidden');
+  progLabel.textContent = 'Listando fotos na nuvem...';
+  progBar.style.width = '0%';
+  try{
+    const folderRef = ref(storage, 'teams/' + teamCode + '/photos');
+    const listing = await listAll(folderRef);
+    const items = allowedIds
+      ? listing.items.filter(itemRef => allowedIds.has(itemRef.name.replace(/\.jpg$/i, '')))
+      : listing.items;
+    if(items.length === 0){
+      showBanner('banner-slot', 'warn', 'Nenhuma foto encontrada pra esse filtro. Pode ser que a equipe ainda não tenha tirado foto desses pontos com internet ligada.');
+      progWrap.classList.add('hidden');
+      btnFiltered.disabled = false; btnAll.disabled = false;
+      return;
+    }
+    const zip = new JSZip();
+    let done = 0;
+    for(const itemRef of items){
+      try{
+        const url = await getDownloadURL(itemRef);
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        zip.file(itemRef.name, blob);
+      }catch(err){
+        console.error('Falha ao baixar', itemRef.name, err);
+      }
+      done++;
+      progLabel.textContent = 'Baixando fotos... ' + done + ' / ' + items.length;
+      progBar.style.width = Math.round(done/items.length*100) + '%';
+    }
+    const zipBlob = await zip.generateAsync({type:'blob'});
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now2 = new Date();
+    const pad2 = n => String(n).padStart(2,'0');
+    a.download = 'fotos_equipe_' + now2.getFullYear()+'-'+pad2(now2.getMonth()+1)+'-'+pad2(now2.getDate()) + '.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+    showBanner('banner-slot', 'info', items.length + ' foto(s) baixada(s) com sucesso.');
+  }catch(err){
+    showBanner('banner-slot', 'error', 'Erro ao baixar fotos: ' + (err.message || err));
+  }
+  progWrap.classList.add('hidden');
+  btnFiltered.disabled = false; btnAll.disabled = false;
+}
+document.getElementById('download-photos-filtered-btn').addEventListener('click', () => downloadPhotos(getFilteredPevs()));
+document.getElementById('download-photos-all-btn').addEventListener('click', () => downloadPhotos(null));
+</script>
+</body>
+</html>
