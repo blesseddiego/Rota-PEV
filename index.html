@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Rota PEV - v5.1</title>
+<title>Rota PEV - v6.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -126,7 +126,7 @@ button{font-family:var(--font-body);cursor:pointer;}
   <p id="geo-status">Buscando coordenadas exatas para montar o mapa e calcular a rota...</p>
   <div class="progress-track"><div class="progress-fill" id="geo-progress"></div></div>
   <div class="progress-label" id="geo-count">0 / 0</div>
-  <div class="version-tag">Versão 5.1 · offline + log de erros</div>
+  <div class="version-tag">Versão 6.0 · sincronização de equipe</div>
   <button class="btn small" style="margin-top:18px;" id="skip-geocode">Pular e usar lista simples</button>
 </div>
 
@@ -140,7 +140,7 @@ button{font-family:var(--font-body);cursor:pointer;}
 
 <div class="topbar">
   <div class="topbar-row">
-    <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span><span class="count" style="opacity:.6;">v5.1</span></div>
+    <div class="brand"><h1>Rota PEV</h1><span class="count" id="month-label"></span><span class="count" style="opacity:.6;">v6.0</span></div>
     <div style="display:flex;gap:6px;align-items:center;">
       <span id="save-indicator" title="Dados salvos" style="font-size:14px;">🟢</span>
       <button class="btn small ghost" id="upload-btn">Nova planilha</button>
@@ -158,6 +158,13 @@ button{font-family:var(--font-body);cursor:pointer;}
   </div>
   <div class="recalc-row">
     <button class="btn primary full" id="recalc-btn">Recalcular rota a partir daqui</button>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+    <span id="team-status-info" style="font-size:11px;color:var(--ink-faint);font-family:var(--font-mono);">Equipe: não configurada</span>
+    <div style="display:flex;gap:6px;">
+      <button class="btn small ghost" id="team-config-btn" style="padding:4px 8px;font-size:11px;">Equipe</button>
+      <button class="btn small ghost" id="team-sync-btn" style="padding:4px 8px;font-size:11px;">Sincronizar</button>
+    </div>
   </div>
   <div id="banner-slot"></div>
 </div>
@@ -193,6 +200,72 @@ button{font-family:var(--font-body);cursor:pointer;}
 <input type="file" accept=".json" id="backup-input" class="hidden">
 <input type="file" accept=".xlsx,.xls,.csv" id="xlsx-input" class="hidden">
 <div id="modal-slot"></div>
+
+<script type="module">
+// Bloco isolado do SDK do Firebase (precisa ser "module" pra usar import).
+// Faz a ponte com o script principal (clássico) via window.RotaPevFirebase,
+// pra não precisar reescrever o app inteiro em módulos ES.
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { getFirestore, doc, setDoc, collection, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { getStorage, ref, uploadString } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDP9UI_1PVj4TMZkOVW8tU0yR1Kxucut_s",
+  authDomain: "rota-pev.firebaseapp.com",
+  projectId: "rota-pev",
+  storageBucket: "rota-pev.firebasestorage.app",
+  messagingSenderId: "422038617076",
+  appId: "1:422038617076:web:432e90e7231d25fce7d7a1"
+};
+
+let fbReady = false;
+let fbReadyResolve;
+const fbReadyPromise = new Promise((res) => { fbReadyResolve = res; });
+
+try{
+  const fbApp = initializeApp(firebaseConfig);
+  const db = getFirestore(fbApp);
+  const storage = getStorage(fbApp);
+  const auth = getAuth(fbApp);
+
+  onAuthStateChanged(auth, (user) => {
+    if(user){ fbReady = true; fbReadyResolve(user); }
+  });
+  signInAnonymously(auth).catch((err) => {
+    console.error('Falha ao autenticar (anônimo) no Firebase', err);
+  });
+
+  window.RotaPevFirebase = {
+    async waitReady(timeoutMs){
+      return Promise.race([
+        fbReadyPromise,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout aguardando Firebase')), timeoutMs || 8000))
+      ]);
+    },
+    async pushPevStatus(teamCode, pevId, data){
+      await this.waitReady();
+      const d = doc(db, 'teams', teamCode, 'pevStatus', pevId);
+      await setDoc(d, Object.assign({}, data, { updatedAt: serverTimestamp() }), { merge: true });
+    },
+    async pullTeamStatus(teamCode){
+      await this.waitReady();
+      const snap = await getDocs(collection(db, 'teams', teamCode, 'pevStatus'));
+      const result = {};
+      snap.forEach((docSnap) => { result[docSnap.id] = docSnap.data(); });
+      return result;
+    },
+    async uploadPhoto(teamCode, pevId, dataUrl){
+      await this.waitReady();
+      const storageRef = ref(storage, 'teams/' + teamCode + '/photos/' + pevId + '.jpg');
+      await uploadString(storageRef, dataUrl, 'data_url');
+    }
+  };
+}catch(err){
+  console.error('Falha ao inicializar Firebase — sincronização com a equipe ficará indisponível', err);
+  window.RotaPevFirebase = null;
+}
+</script>
 
 <script>
 // COLE A CHAVE DA GEOAPIFY ABAIXO:
@@ -422,6 +495,108 @@ async function saveFlags(){
   await persist('kv', 'point-flags-v1', flags);
 }
 let flags = {};
+
+// ============================================================
+// SINCRONIZAÇÃO COM A EQUIPE (Firestore) + BACKUP DE FOTOS (Storage)
+// Nome+código ficam salvos localmente. Push acontece a cada ação do usuário
+// (best-effort, nunca bloqueia a interface). Pull acontece ao abrir o app
+// e sob demanda pelo botão "Sincronizar com a equipe".
+// ============================================================
+let teamName = null;
+let teamCode = null;
+let remoteSyncMeta = {}; // pevId -> millis do último updatedAt remoto já aplicado
+
+async function loadTeamConfig(){
+  try{
+    const r = await idbGet('kv', 'team-config-v1');
+    teamName = (r && r.name) || null;
+    teamCode = (r && r.code) || null;
+  }catch(e){ teamName = null; teamCode = null; }
+}
+async function saveTeamConfig(name, code){
+  teamName = name; teamCode = code;
+  await persist('kv', 'team-config-v1', {name, code});
+}
+async function loadRemoteSyncMeta(){
+  try{ const r = await idbGet('kv', 'remote-sync-meta-v1'); remoteSyncMeta = r || {}; }catch(e){ remoteSyncMeta = {}; }
+}
+async function saveRemoteSyncMeta(){
+  await persist('kv', 'remote-sync-meta-v1', remoteSyncMeta);
+}
+
+function teamSyncAvailable(){
+  return !!(teamName && teamCode && window.RotaPevFirebase);
+}
+
+// Envia o estado atual de UM ponto pra equipe. Silencioso e best-effort:
+// se falhar (sem internet, Firebase fora do ar, etc.), só registra no log
+// de erros e segue — nunca atrapalha o trabalho local.
+async function pushPevStatusToTeam(id){
+  if(!teamSyncAvailable()) return;
+  try{
+    const data = {
+      visited: !!visited[id],
+      visitStatus: visitStatus[id] || null,
+      flags: flags[id] || null,
+      manualCoord: manualCoords[id] || null,
+      updatedBy: teamName
+    };
+    await window.RotaPevFirebase.pushPevStatus(teamCode, id, data);
+  }catch(err){
+    await logError('pushPevStatusToTeam:'+id, err);
+  }
+}
+
+function tsToMillis(ts){
+  if(!ts) return 0;
+  if(typeof ts.toMillis === 'function') return ts.toMillis();
+  if(ts.seconds) return ts.seconds * 1000;
+  return 0;
+}
+
+// Busca o estado de todos os pontos da equipe e aplica localmente só o que
+// for mais novo do que a última vez que já sincronizamos aquele ponto —
+// não sobrescreve uma mudança local que ainda não foi enviada.
+async function pullTeamStatusAndMerge(){
+  if(!teamSyncAvailable()) return {applied: 0, error: null};
+  let applied = 0;
+  try{
+    const remote = await window.RotaPevFirebase.pullTeamStatus(teamCode);
+    for(const pevId of Object.keys(remote)){
+      const doc = remote[pevId];
+      const remoteMillis = tsToMillis(doc.updatedAt);
+      const lastKnown = remoteSyncMeta[pevId] || 0;
+      if(remoteMillis > lastKnown){
+        if(doc.visited !== undefined) visited[pevId] = doc.visited;
+        if(doc.visitStatus !== undefined) visitStatus[pevId] = doc.visitStatus || undefined;
+        if(doc.flags) flags[pevId] = doc.flags;
+        if(doc.manualCoord) manualCoords[pevId] = doc.manualCoord;
+        remoteSyncMeta[pevId] = remoteMillis;
+        applied++;
+      }
+    }
+    if(applied > 0){
+      await saveVisited();
+      await saveVisitStatus();
+      await saveFlags();
+      await saveManualCoords();
+      await saveRemoteSyncMeta();
+    }
+    return {applied, error: null};
+  }catch(err){
+    await logError('pullTeamStatusAndMerge', err);
+    return {applied, error: err};
+  }
+}
+
+async function uploadPhotoToTeamInBackground(id, dataUrl){
+  if(!teamSyncAvailable()) return;
+  try{
+    await window.RotaPevFirebase.uploadPhoto(teamCode, id, dataUrl);
+  }catch(err){
+    await logError('uploadPhotoToTeam:'+id, err);
+  }
+}
 let visitStatus = {};
 async function loadVisitStatus(){
   try{ const r = await idbGet('kv', 'visit-status-v1'); visitStatus = r || {}; }catch(e){ visitStatus = {}; }
@@ -1166,6 +1341,31 @@ async function deletePev(id){
   await refreshAll(routeUsesRealTime);
 }
 
+function updateTeamStatusInfo(){
+  const el = document.getElementById('team-status-info');
+  if(!el) return;
+  if(teamName && teamCode){
+    el.textContent = 'Equipe: ' + teamCode + ' (' + teamName + ')';
+  }else{
+    el.textContent = 'Equipe: não configurada';
+  }
+}
+
+function openTeamConfigModal(){
+  document.getElementById('modal-slot').innerHTML =
+    '<div class="modal-bg" id="team-config-modal-bg"><div class="modal">'+
+    '<h3>Configurar equipe</h3>'+
+    '<p>Todo mundo que usar o mesmo código de equipe vê o status de visita, limpeza e adesivos uns dos outros em tempo real. As fotos continuam locais, com backup automático em segundo plano.</p>'+
+    '<p style="margin-bottom:4px;font-size:13px;font-weight:500;">Seu nome</p>'+
+    '<input type="text" id="team-name-input" value="'+(teamName||'')+'" placeholder="Ex: Diego" style="width:100%;border-radius:var(--radius);border:1px solid var(--border-strong);padding:10px;font-size:14px;margin-bottom:10px;">'+
+    '<p style="margin-bottom:4px;font-size:13px;font-weight:500;">Código da equipe</p>'+
+    '<input type="text" id="team-code-input" value="'+(teamCode||'')+'" placeholder="Ex: pev-noroeste-2026" style="width:100%;border-radius:var(--radius);border:1px solid var(--border-strong);padding:10px;font-size:14px;margin-bottom:14px;">'+
+    '<div class="modal-actions">'+
+      '<button class="btn primary full" id="save-team-config-btn">Salvar</button>'+
+      '<button class="btn full" id="cancel-team-config-btn">Cancelar</button>'+
+    '</div></div></div>';
+}
+
 async function openAutoBackupsModal(){
   const backups = (await listAutoBackups()).slice().reverse();
   const fmt = (ts) => new Date(ts).toLocaleString('pt-BR');
@@ -1226,6 +1426,7 @@ document.addEventListener('click', async (e) => {
     }
     await saveVisitStatus();
     await saveVisited();
+    pushPevStatusToTeam(id);
     await refreshAll();
     return;
   }
@@ -1284,6 +1485,7 @@ document.addEventListener('click', async (e) => {
       }
       manualCoords[id] = [pos.lat, pos.lng];
       await saveManualCoords();
+      pushPevStatusToTeam(id);
       document.getElementById('modal-slot').innerHTML = '';
       await refreshAll();
     }
@@ -1295,6 +1497,7 @@ document.addEventListener('click', async (e) => {
     if(pos){
       manualCoords[id] = pos;
       await saveManualCoords();
+      pushPevStatusToTeam(id);
       document.getElementById('modal-slot').innerHTML = '';
       await refreshAll();
     }else{
@@ -1459,6 +1662,50 @@ document.addEventListener('click', async (e) => {
     URL.revokeObjectURL(url);
     return;
   }
+  if(e.target.id === 'team-config-btn'){
+    openTeamConfigModal();
+    return;
+  }
+  if(e.target.id === 'cancel-team-config-btn'){
+    document.getElementById('modal-slot').innerHTML = '';
+    return;
+  }
+  if(e.target.id === 'save-team-config-btn'){
+    const name = document.getElementById('team-name-input').value.trim();
+    const code = document.getElementById('team-code-input').value.trim();
+    if(!name || !code){
+      showBanner('warn', 'Preencha nome e código da equipe pra ativar a sincronização.');
+      return;
+    }
+    await saveTeamConfig(name, code);
+    updateTeamStatusInfo();
+    document.getElementById('modal-slot').innerHTML = '';
+    showBanner('info', 'Equipe configurada. Sincronizando...');
+    const result = await pullTeamStatusAndMerge();
+    if(!result.error){
+      showBanner('info', 'Sincronizado com a equipe — ' + result.applied + ' atualização(ões) recebida(s).');
+    }else{
+      showBanner('warn', 'Equipe salva, mas não consegui sincronizar agora (sem internet ou Firebase indisponível). Vai tentar de novo mais tarde.');
+    }
+    await refreshAll();
+    return;
+  }
+  if(e.target.id === 'team-sync-btn'){
+    if(!teamName || !teamCode){
+      showBanner('warn', 'Configure nome e código da equipe primeiro, no botão "Equipe".');
+      return;
+    }
+    e.target.textContent = 'Sincronizando...';
+    const result = await pullTeamStatusAndMerge();
+    e.target.textContent = 'Sincronizar';
+    if(!result.error){
+      showBanner('info', result.applied > 0 ? ('Recebido ' + result.applied + ' atualização(ões) da equipe.') : 'Tudo já estava atualizado.');
+      await refreshAll();
+    }else{
+      showBanner('warn', 'Não consegui sincronizar agora — verifique a internet. Seus dados locais estão seguros.');
+    }
+    return;
+  }
   if(e.target.id === 'view-auto-backups-btn'){
     await openAutoBackupsModal();
     return;
@@ -1528,6 +1775,7 @@ document.addEventListener('change', async (e) => {
     if(!flags[id]) flags[id] = {};
     flags[id][flagName] = e.target.checked;
     await saveFlags();
+    pushPevStatusToTeam(id);
     return;
   }
   if(e.target.id === 'backup-input' && e.target.files[0]){
@@ -1548,12 +1796,14 @@ document.addEventListener('change', async (e) => {
   if(e.target.id === 'photo-input' && e.target.files[0] && activePhotoId){
     const dataUrl = await processPhotoFile(e.target.files[0], activePhotoId, true);
     await setPhoto(activePhotoId, dataUrl);
+    uploadPhotoToTeamInBackground(activePhotoId, dataUrl);
     e.target.value = '';
     await refreshAll();
   }
   if(e.target.id === 'photo-gallery-input' && e.target.files[0] && activePhotoId){
     const dataUrl = await processPhotoFile(e.target.files[0], activePhotoId, false);
     await setPhoto(activePhotoId, dataUrl);
+    uploadPhotoToTeamInBackground(activePhotoId, dataUrl);
     e.target.value = '';
     await refreshAll();
   }
@@ -1595,6 +1845,8 @@ async function init(){
     await loadFlags();
     await loadVisitStatus();
     await loadErrorLog();
+    await loadTeamConfig();
+    await loadRemoteSyncMeta();
     setSaveStatus('saved');
   }catch(e){
     console.error('Erro ao carregar dados salvos', e);
@@ -1602,6 +1854,7 @@ async function init(){
     setSaveStatus('error');
     showBanner('warn', 'Não foi possível acessar o armazenamento local do navegador. Os dados desta sessão podem não ser salvos.');
   }
+  updateTeamStatusInfo();
   const backupCount = (await listAutoBackups()).length;
   updateAutoBackupInfo(backupCount);
   if(PEVS.length === 0){
@@ -1613,6 +1866,14 @@ async function init(){
     showBanner('warn', 'Não foi possível obter a localização inicial via GPS. Toque em "Recalcular rota".');
   }
   await refreshAll();
+  if(teamName && teamCode){
+    pullTeamStatusAndMerge().then((result) => {
+      if(result.applied > 0){
+        showBanner('info', 'Recebido ' + result.applied + ' atualização(ões) da equipe.');
+        refreshAll();
+      }
+    });
+  }
 }
 
 window.onload = init;
