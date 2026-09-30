@@ -809,15 +809,45 @@ function wazeUrl(p){
   return 'https://waze.com/ul?q=' + encodeURIComponent(p.endereco) + '&navigate=yes';
 }
 
+let geoWatchId = null;
+let lastMapRefreshFromWatch = 0;
+
 function getPosition(){
   return new Promise((resolve) => {
     if(!navigator.geolocation){ resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
       pos => resolve([pos.coords.latitude, pos.coords.longitude]),
-      err => resolve(null),
-      {enableHighAccuracy:true, timeout:5000}
+      () => {
+        // primeira tentativa falhou (comum com GPS "frio") — tenta de novo com prazo
+        // maior e sem exigir alta precisão, em vez de desistir na hora
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve([pos.coords.latitude, pos.coords.longitude]),
+          () => resolve(null),
+          {enableHighAccuracy:false, timeout:15000, maximumAge:30000}
+        );
+      },
+      {enableHighAccuracy:true, timeout:8000}
     );
   });
+}
+
+// Mantém currentPos sempre atualizado sozinho, em vez de depender só de pedidos
+// pontuais (que falhavam em silêncio e travavam a rota/mapa numa posição velha).
+function startWatchingPosition(){
+  if(!navigator.geolocation || geoWatchId !== null) return;
+  geoWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      currentPos = [pos.coords.latitude, pos.coords.longitude];
+      const now = Date.now();
+      const mapView = document.getElementById('view-map');
+      if(mapView && !mapView.classList.contains('hidden') && now - lastMapRefreshFromWatch > 5000){
+        lastMapRefreshFromWatch = now;
+        try{ renderMap(); }catch(e){}
+      }
+    },
+    () => { /* mantém o último currentPos válido; não apaga em caso de falha pontual */ },
+    {enableHighAccuracy:true, maximumAge:10000, timeout:20000}
+  );
 }
 
 // ============================================================
@@ -1862,6 +1892,7 @@ async function init(){
   }
   await runGeocoding();
   currentPos = await getPosition();
+  startWatchingPosition();
   if(!currentPos && !geocodingAborted){
     showBanner('warn', 'Não foi possível obter a localização inicial via GPS. Toque em "Recalcular rota".');
   }
